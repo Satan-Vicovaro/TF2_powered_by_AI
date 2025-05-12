@@ -1,5 +1,6 @@
 TODO
-- boty patrza tam gdzie chcemy
-- ustawić boty na planszy (dwie drużyny)
-- sprawdzić możliwości squirrela z plikami
+bot_handler:
+- skrypt respiący N botów w kółku w pewnej odległości od środka i bot cel
+- skrypt tworzący plik wyjściowy
+ogolne:
 - wymiana informacji miedzy pythongiem a skryptami
