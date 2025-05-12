@@ -126,6 +126,28 @@ class::bot_handler {
         printl("thinking")
     }
 
+    function RotateBot(bot_id, yaw, pitch) {
+        bot_list = GetBots()
+        if(bot_id < 0 || bot_id >= bot_list.len()-1) {
+            printl("Bad index")
+            return;
+        }
+
+        local ent = bot_list[bot_id]
+
+        if (!ent) {
+            printl("RotateBot: invalid entity.");
+            return;
+        }
+
+        local eye = ent.LocalEyeAngles();
+
+        eye.x = pitch; // Pitch (up/down)
+        eye.y = yaw;   // Yaw (left/right)
+
+        ent.SnapEyeAngles(QAngle(eye.x, eye.y, 0));
+    }
+
     function BotIgnoreEnemy() {
 
         foreach(key,bot in bot_list) {
