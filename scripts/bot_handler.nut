@@ -117,7 +117,7 @@ class::bot_handler {
             AddThinkToEnt(bot,"Think")
         }
     }
-    
+
     function ShowScripts() {
         bot_list = GetBots()
         foreach(key,bot in bot_list) {
@@ -133,6 +133,28 @@ class::bot_handler {
     function Update() {
         //ent.SetAbsAngles(QAngle(eye.x, eye.y, eye.z))
         printl("thinking")
+    }
+
+    function RotateBot(bot_id, yaw, pitch) {
+        bot_list = GetBots()
+        if(bot_id < 0 || bot_id >= bot_list.len()-1) {
+            printl("Bad index")
+            return;
+        }
+
+        local ent = bot_list[bot_id]
+
+        if (!ent) {
+            printl("RotateBot: invalid entity.");
+            return;
+        }
+
+        local eye = ent.LocalEyeAngles();
+
+        eye.x = pitch; // Pitch (up/down)
+        eye.y = yaw;   // Yaw (left/right)
+
+        ent.SnapEyeAngles(QAngle(eye.x, eye.y, 0));
     }
 }
 
