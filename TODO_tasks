@@ -1,0 +1,40 @@
+
+    
+Program schema:
+    *Spawns bot from terminal* 
+    (tf_bot_add ...)
+    
+    bots = get_bots()
+    place_in_random_position(bots)    
+            
+    while(idk):
+        send_bots_pos()    //tf2 -> python
+        data_to_bots = wait_for_anwser()  //python -> tf2
+        
+        set_angles_for_bots(data_to_bots)
+        fire_bots()        
+        
+        data = get_evaluation_data()
+        
+        send_eval_data(data)
+
+
+Implementing proper bot_handler class:
+
+    Shooter_bots:    
+    generate_random_pos()
+    set_angles()
+    make_bots_fire()
+    get_bot_pos()
+
+    Target_bot:
+    spawn_in_random_location()
+    listen_or_damage() <--- how he comunicate that?          
+    
+Python handler bot: (main object?)
+    handle_bot
+    
+    *in loop*
+        listen_for_python_message()
+        
+        
