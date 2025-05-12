@@ -5,16 +5,19 @@
 class::bot_handler {
 	bot_list = []
 
+    // mp_autoteambalance 0
+    // mp_teams_unbalance_limit 0
+    // nb_player_move 0
     // tf_bot_add 1 demoman red
     // tf_bot_keep_class_after_death 1
     // tf_bot_fire_weapon_allowed 0
     // tf_bot_force_class demoman
     // tf_bot_quota_mode match
 
-	// we cannot add bot via SpawnEntityFromTable() bcs it crashes ;3
+	// w    e cannot add bot via SpawnEntityFromTable() bcs it crashes ;3
 	function AddTFBot() {
 		// This triggers the point_servercommand to run tf_bot_add
-        SendToServerConsole("tf_bot_add 1 demoman red")
+        //SendToServerConsole("tf_bot_add 1 demoman red")
 	}
 
 	constructor(bots_num) {
@@ -48,19 +51,16 @@ class::bot_handler {
     }
 
     function PrintBots() {
-        bot_list = GetBots()
         if (bot_list ==  null) {
             return
         }
         foreach(i, ent in bot_list) {
             printl(i)
             printl(ent)
-            //printl(ent.GetMission())
         }
     }
 
     function MoveBots() {
-        bot_list = GetBots()
         foreach(i, ent in bot_list) {
             ent.SetVelocity(Vector(200.0,200.0,200.0))
         }
@@ -76,30 +76,21 @@ class::bot_handler {
     }
 
     function RotateBots() {
-        bot_list = GetBots()
-        for(local i = 0; i<10;i++) {
-            foreach(i, ent in bot_list) {
-                local eye  = ent.GetAngles()
-                printl(eye)
-                eye.x += 0.3
-                eye.y += 0.3
-                eye.z += 0.3
-                printl(eye)
-                ent.SetAbsAngles(QAngle(eye.x, eye.y, eye.z))
-            }
+        foreach(i, ent in bot_list) {
+            local eye = ent.LocalEyeAngles()
+            //eye.x += 10 // obrot w pionie
+            printl(eye)
+            eye.y += 20 // obrot w poziomie
+            ent.SnapEyeAngles(eye)
         }
         printl("bot rotaed")
     }
 
     function TeleportBots(position) {
-        bot_list = GetBots()
         foreach(i, ent in bot_list) {
-            //ent.SetOrigin(position)
-            //printl("Dif " + ent.GetDifficulty())
-            //printl("M before: "+ent.GetMission())
-            //ent.SetMission(NO_MISSION, true)
-            //printl("M after: " + ent.GetMission())
-            printl("Atencion: " + ent.IsAttentionFocusedOn(GetListenServerHost()))
+            local pos = ent.GetLocalOrigin()
+            pos.x += i * 30
+            ent.SetLocalOrigin(pos)
         }
     }
 
@@ -117,7 +108,7 @@ class::bot_handler {
             AddThinkToEnt(bot,"Think")
         }
     }
-    
+
     function ShowScripts() {
         bot_list = GetBots()
         foreach(key,bot in bot_list) {
@@ -134,14 +125,24 @@ class::bot_handler {
         //ent.SetAbsAngles(QAngle(eye.x, eye.y, eye.z))
         printl("thinking")
     }
+
+    function BotIgnoreEnemy() {
+
+        foreach(key,bot in bot_list) {
+            if (!bot.HasBotAttribute(1024)) {
+                bot.AddBotAttribute(1024)
+            }
+        }
+    }
 }
 
 
-//bot_handler <- ::bot_handler(4)
+bot_handler <- ::bot_handler(4)
 bot_handler.PrintBots()
+bot_handler.BotIgnoreEnemy()
 //bot_handler.MoveBots()
-///bot_handler.MakeBotsFire()
-//bot_handler.RotateBots()
+//bot_handler.MakeBotsFire()
+bot_handler.RotateBots()
 bot_handler.TeleportBots(Vector(500,0,200))
 //bot_handler.UpdateScript()
 //bot_handler.ShowScripts()
