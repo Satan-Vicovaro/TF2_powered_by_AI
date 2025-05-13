@@ -32,7 +32,8 @@ def create_and_copy_folders():
         "scripts": "../source-sdk-2013/game/mod_tf/scripts/vscripts", 
     }
     folder_path_windows = { #fill that in if you are windows user 🤮 
-
+        "maps": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Team Fortress 2\\tf\\maps",   
+        "scripts": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Team Fortress 2\\tf\\scripts\\vscripts",   
     }
 
     folder_path = {}
