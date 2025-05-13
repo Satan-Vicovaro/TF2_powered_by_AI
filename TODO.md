@@ -1,6 +1,6 @@
 TODO
-bot_handler:
-- skrypt respiący N botów w kółku w pewnej odległości od środka i bot cel
-- skrypt tworzący plik wyjściowy
-ogolne:
-- wymiana informacji miedzy pythongiem a skryptami
+- script for initialising environment
+- spawning target_bot in random location
+- getting information about the damage dealer
+- sending damage information to a file
+- sending position information to a file
