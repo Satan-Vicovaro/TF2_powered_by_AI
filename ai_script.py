@@ -1,3 +1,4 @@
+import random
 import threading
 import time
 import os
@@ -76,6 +77,18 @@ def main():
     
     tf_listener.start()
     user_listener.start()
+
+    while not end_program.is_set():
+        message = ""
+        for i in range(0,100):
+            message += " {0} {1} {2}\n".format(
+                i,
+                random.random(),
+                random.random())
+
+        #print(message + "\n")
+        player_input_messages.put(message)
+        time.sleep(0.05)
 
 
     tf_listener.join()
