@@ -2,9 +2,27 @@ import os
 import platform
 import shutil
 from pathlib import Path
+import json
 
-def get_os():
-    return platform.system()
+
+default_config = {
+    "maps": "TF2 PATH/tf/maps",
+    "scripts": "TF2 PATH/tf/scripts/vscripts",
+    "cfg": "TF2 PATH/tf/cfg",
+}
+
+
+def load_config(path: Path) -> dict:
+    with path.open("r") as f:
+        return json.load(f)
+
+
+def create_config(path: Path):
+    with path.open("w") as file:
+        json.dump(default_config, file, indent=4)
+    print("Config file created")
+
+
 
 def copy_folder_contents(source_folder, destination_folder):
     # Copy all files and subdirectories from source to destination
@@ -16,39 +34,32 @@ def copy_folder_contents(source_folder, destination_folder):
                 shutil.copytree(item, destination_item, dirs_exist_ok=True)
             else:
                 # If it's a file, copy it
-                shutil.copy2(item, destination_item)  
+                shutil.copy2(item, destination_item)
         print(f"Copied contents from {source_folder} to \n{destination_folder}")
     except Exception as e:
         print(f"Error copying contents from {source_folder} to \n {destination_folder}: {e}")
 
 def create_and_copy_folders():
-    current_os = get_os()
-    current_directory = Path(os.getcwd())  # Get the current working directory
-    
-    
-    # Define the folders to copy and their relative destination paths
-    folder_path_linux = {
-        "maps": "../source-sdk-2013/game/mod_tf/maps",   
-        "scripts": "../source-sdk-2013/game/mod_tf/scripts/vscripts", 
-    }
-    folder_path_windows = { #fill that in if you are windows user 🤮 
-        "maps": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Team Fortress 2\\tf\\maps",   
-        "scripts": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Team Fortress 2\\tf\\scripts\\vscripts",   
-    }
+    current_directory = Path.cwd()  # Get the current working directory
 
-    folder_path = {}
+    config_path = current_directory / "config.json"
 
-    if current_os == "Windows":
-        folder_path = folder_path_windows
-    elif current_os == "Linux":
-        folder_path = folder_path_linux
-    else:
-        print(f"Unsupported OS: {current_os}")
-        return
+    if not config_path.exists():
+        create_config(config_path)
+
+    folder_path = load_config(config_path)
+
+    for key in folder_path.keys():
+        if len(folder_path[key]) == 0:
+            raise RuntimeError("Config file is empty")
+
+    if len(folder_path.keys()) < len(default_config.keys()):
+        create_config(config_path)
+        raise RuntimeError("Config has been updated")
 
 
     for folder_name, destination in folder_path.items():
-        
+
         source_folder = current_directory / folder_name  # Using relative path
         target_dir = current_directory / destination
 
