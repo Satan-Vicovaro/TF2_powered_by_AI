@@ -9,6 +9,7 @@ default_config = {
     "maps": "TF2 PATH/tf/maps",
     "scripts": "TF2 PATH/tf/scripts/vscripts",
     "cfg": "TF2 PATH/tf/cfg",
+    "scriptdata": "TF2 PATH/tf/scriptdata",
 }
 
 
