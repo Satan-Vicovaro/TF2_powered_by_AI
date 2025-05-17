@@ -1,5 +1,6 @@
 // https://developer.valvesoftware.com/wiki/Team_Fortress_2/Scripting/Script_Functions/Constants
 ::TF_TEAM_RED <- 2
+::TF_TEAM_BLUE <- 3
 ::NO_MISSION <- 0
 
 class::bot_handler {
@@ -8,7 +9,8 @@ class::bot_handler {
     // mp_autoteambalance 0
     // mp_teams_unbalance_limit 0
     // nb_player_move 0
-    // tf_bot_add 1 demoman red
+    // nb_blind 1
+    // tf_bot_add 6 demoman red
     // tf_bot_keep_class_after_death 1
     // tf_bot_fire_weapon_allowed 0
     // tf_bot_force_class demoman
@@ -50,6 +52,15 @@ class::bot_handler {
         return bot_list
     }
 
+    function GetTargetBot() {
+        local ent = null
+		while (ent = Entities.FindByClassname(ent, "player")) { //our bots are player class
+            if (ent.GetTeam() == TF_TEAM_BLUE && ent.IsFakeClient()) {
+                return ent
+            }
+		}
+    }
+
     function PrintBots() {
         if (bot_list ==  null) {
             return
@@ -86,12 +97,20 @@ class::bot_handler {
         printl("bot rotaed")
     }
 
-    function TeleportBots(position) {
+    // Places bots evenly around a circle of a given center point and radius
+    //
+    function TeleportBots(center_pos, radius) {
         foreach(i, ent in bot_list) {
-            local pos = ent.GetLocalOrigin()
-            pos.x += i * 30
-            ent.SetLocalOrigin(pos)
+            local angle = 2 * PI * i / bot_list.len()
+            local bot_pos = ent.GetLocalOrigin()
+
+            bot_pos.x = center_pos.x + radius * cos(angle)
+            bot_pos.y = center_pos.y + radius * sin(angle)
+            ent.SetLocalOrigin(bot_pos)
         }
+
+        local target = bot_handler.GetTargetBot()
+        target.SetLocalOrigin(center_pos)
     }
 
 
@@ -156,16 +175,21 @@ class::bot_handler {
             }
         }
     }
+
+    function Setup() {
+        BotIgnoreEnemy()
+        TeleportBots(Vector(0,0,140), 250)
+    }
 }
 
 
 bot_handler <- ::bot_handler(4)
 bot_handler.PrintBots()
-bot_handler.BotIgnoreEnemy()
+//bot_handler.BotIgnoreEnemy()
 //bot_handler.MoveBots()
 //bot_handler.MakeBotsFire()
-bot_handler.RotateBots()
-bot_handler.TeleportBots(Vector(500,0,200))
+//bot_handler.RotateBots()
+//bot_handler.TeleportBots(Vector(0,0,140), 250)
 //bot_handler.UpdateScript()
 //bot_handler.ShowScripts()
 
@@ -186,3 +210,22 @@ bot_handler.TeleportBots(Vector(500,0,200))
 // }
 
 // ExecuteServerCommand();
+local EventsID = UniqueString()
+getroottable()[EventsID] <-
+{
+	OnScriptHook_OnTakeDamage = function(params)
+	{
+		printl("OnScriptHook_OnTakeDamage")
+		if (params.const_entity.IsPlayer())
+		{
+			__DumpScope(1, params) // show parameters
+			params.damage = 0
+		}
+	}
+
+	// Cleanup events on round restart
+	OnGameEvent_scorestats_accumulated_update = function(_) { delete getroottable()[EventsID] }
+}
+local EventsTable = getroottable()[EventsID]
+foreach (name, callback in EventsTable) EventsTable[name] = callback.bindenv(this)
+__CollectGameEventCallbacks(EventsTable)
