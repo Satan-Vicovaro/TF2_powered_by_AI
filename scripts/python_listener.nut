@@ -43,6 +43,9 @@ class :: python_listener {
 	}
 
 
+	function Kebab() {
+		printl("Jestem w Kebabie")
+	}
 
 	function DispatchAngleMessage(message) {
 		// information format:
@@ -114,15 +117,20 @@ class :: python_listener {
 			print("Thats my own sign: \\0")
 			return;
 		}
+		if(input_message == "kebab") {
+			EntFireByHandle( self, "Kebab", """, 0, self, self)
+		}
+
 		StringToFile(in_file_path, "") // emptying *in* file
 
 		DispatchAngleMessage(input_message)
 
 		//printl("Writing to python: " + input_message)
 		// Output to python
-		//StringToFile(out_file_path, input_message)
+		StringToFile(out_file_path, input_message)
 	}
 
 }
 
 p_listener <- python_listener()
+

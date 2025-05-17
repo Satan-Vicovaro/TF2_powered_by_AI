@@ -1,0 +1,24 @@
+0: Cfg
+1:  Python_listener Init()
+    P_L: Target_Bot Init()
+    P_L: Bot_Handler Init()
+
+    while end:
+        P_L: dawaj_dane <- Python
+        
+        P_L: send_data -> Target_Bot (Script_hook)
+        
+        T_B: send_postions -> Python (squirrel_out file)
+
+        P_L: masz_odp <- Python (kąty)
+        
+        *Pytong czeka 5 sekund na: sneds_kto_trafił*
+
+            P_L: set_angles -> Bot_Handler (Script_hook)
+
+            T_B: sends_kto_trafił -> Python (squirrel_out)
+        ***********
+
+        
+ Python_listener: (start, dawaj_dane, ustaw_kąty) <- Python
+ Target_Bot: (send_postions,sends_kto_trafił) <- Script_hook
