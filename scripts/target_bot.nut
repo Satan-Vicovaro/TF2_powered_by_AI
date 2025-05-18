@@ -1,16 +1,16 @@
 ::FLT_MAX <- 3.402823466e+38
+::TF_TEAM_RED <- 2
+::GRAV_MIN <- 0.00001
 
 // Debugging constant
-const debug = false
+const debug = true
 
 // Bot spawn constants
-const X_MIN = 100 // TODO specify where target_bot can get spawned
-const X_MAX = 300
-const Y_MIN = 100
-const Y_MAX = 300
-const Z_MIN = 0.001
-const Z_MAX = 5
 const DMG_BEFORE_REPOSITION = 100 // TODO specify how much damage for bot to reposition
+
+const SPAWN_RADIUS = 100
+const ORIGIN_X = 0
+const ORIGIN_Y = 0
 
 class ::TargetBot
 {
@@ -34,13 +34,13 @@ class ::TargetBot
         else if (typeof arg == "Vector")
         {
             // new spawn
-            this.bot = SpawnEntityFromTable("base_boss",
+         this.bot = SpawnEntityFromTable("base_boss",
             {
                 targetname = "target_bot",
                 origin = arg,
                 model = "models/bots/soldier/bot_soldier.mdl",
                 playbackrate = 1.0,
-                health = FLT_MAX
+                health = 10000
             })
         }
 
@@ -51,23 +51,42 @@ class ::TargetBot
 
         this.bot_pos = this.bot.GetOrigin()
         this.seq_idle = this.bot.LookupSequence("Stand_MELEE")
+
+        printl("Grav contrustor" + this.bot.GetGravity())
     }
 
     // moves bot to destination Vector and logs position to a file
     function move_to_position(destination)
     {
         this.bot.SetLocalOrigin(destination)
-        append_to_file("target_bot_position_data", format("%s", vector_to_string(destination)))
     }
 
-    // moves the bot to a random location
+
+    // Moves the bot to a random location within a sphere of radius RADIUS around ORIGIN
     function move_to_random_position()
     {
-        local x = get_random_in_range(X_MIN, X_MAX)
-        local y = get_random_in_range(Y_MIN, Y_MAX)
-        local z = get_random_in_range(Z_MIN, Z_MAX)
-        move_to_position(Vector(x,y,z))
+        local radius = SPAWN_RADIUS // you can tweak this
+        local origin = Vector(ORIGIN_X, ORIGIN_Y, 2*SPAWN_RADIUS)
+        // Generate random point in unit sphere
+        local dir;
+        do {
+            dir = Vector(
+                RandomFloat(-1.0, 1.0),
+                RandomFloat(-1.0, 1.0),
+                RandomFloat(-1.0, 1.0)
+            );
+        } while (dir.LengthSqr() > 1.0); // reject points outside the unit sphere
+
+        // Scale to desired radius
+        dir *= RandomFloat(0.0, radius);
+
+        // Final position
+        local targetPos = origin + dir;
+
+        move_to_position(targetPos);
+        printl("Grav move to random" + this.bot.GetGravity())
     }
+
 }
 
 // --------------------------Helper functions--------------------------
@@ -142,12 +161,12 @@ function append_to_file(filename,  textToAppend)
 // -------------------------------Calls--------------------------------
 
 ::spawnedBot <- get_instance()
+spawnedBot.bot.SetGravity(0.00001)
 if(!debug)
     spawnedBot.move_to_random_position()
 else
 {
-    // test purposes
-    spawnedBot.move_to_position(Vector(273, 503, 0.03125))
+    spawnedBot.move_to_random_position()
 }
 
 // --------------------------Event collection---------------------------
@@ -169,6 +188,29 @@ function collect_events_in_scope(events)
     getroottable()[events_id] <- events_table;
 }
 
+function shooter_bots_positions_to_string(prefix)
+{
+    // get all shooter bots
+    local bot_list = []
+    local ent = null
+    while (ent = Entities.FindByClassname(ent, "player")) { //our bots are player class
+        //printl(ent)
+        // lets assume that bots are in RED team
+        if (ent.GetTeam() == TF_TEAM_RED) {
+            bot_list.append(ent)
+        }
+    }
+    // get their postitions and put them to string
+    local return_string = ""
+    foreach(i, ent in bot_list)
+    {
+        return_string += prefix + " " + ent.entindex() + " " + vector_to_string(ent.GetOrigin()) + "\n"
+    }
+    // return the string
+    return return_string
+}
+
+
 // collecting events
 collect_events_in_scope({
     //called when target_bot gets damaged
@@ -186,13 +228,13 @@ collect_events_in_scope({
                 if (debug) printl(attacker + " did " + damage + " dmg")
                 if(debug) printl("Bots health: " + spawnedBot.health)
 
-                append_to_file("target_bot_dmg_data",  format("%d %f", attacker.entindex(), damage))
+                append_to_file("squirrel_out",  format("d %d %f", attacker.entindex(), damage))
 
                 // reposition logic
                 spawnedBot.health -= damage
                 if (spawnedBot.max_health - spawnedBot.health >= spawnedBot.reposition_damage)
                 {
-                    if (debug) printl("reoposition")
+                    if (debug) printl("reposition")
                     spawnedBot.move_to_random_position()
                     spawnedBot.health = spawnedBot.max_health
                 }
@@ -204,17 +246,21 @@ collect_events_in_scope({
         }
 	}
 
-    // function OnGameEvent_npc_hurt(params)
-	// {
+    // called when a script requests for postition_data
+    function OnScriptHook_SendPositions(params) {
+        // sending target_bot position to squirrel_out
+        local complete_positions_data_string = ""
+        // appending target bot position
+        complete_positions_data_string += "p t " + spawnedBot.bot.entindex() + " " + vector_to_string(spawnedBot.bot.GetOrigin()) + "\n"
+        // appending all shooter bots positions
+        complete_positions_data_string += shooter_bots_positions_to_string("p s")
+        // appending to the out file
+        append_to_file("squirrel_out", complete_positions_data_string)
 
-    //     local attacker = EntIndexToHScript(params.attacker_player)
-    //     local damage = params.damageamount
+        if (debug) printl(complete_positions_data_string)
+    }
 
-    //     printl("on  npc hurt")
-    //     if (attacker.IsPlayer() && attacker != null)
-	// 	{
-	// 		printl(get_id(attacker) + " did " + damage + " dmg")
-    //         append_to_file("target_bot_data",  format("%d %f", get_id(attacker), damage))
-	// 	}
-	// }
+    function OnScriptHook_Reposition(params) {
+        spawnedBot.move_to_random_position()
+    }
 });
