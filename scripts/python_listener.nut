@@ -11,10 +11,12 @@ class :: python_listener {
 	input_message = null;
 
 	bot_angle_data =  null // bot_id -> pitch, yaw, eg. bot_angle_data[bot_id].yaw = ...
-    constructor(){
+
+	start_program = null
+	constructor(){
 		bot_angle_data = {}
 		out_file_path = "squirrel_out";
-    in_file_path = "squirrel_in";
+	    in_file_path = "squirrel_in";
 		listener_bot = SpawnEntityFromTable("base_boss",
 		{
 			targetname = "bot",
@@ -40,6 +42,8 @@ class :: python_listener {
 			return bot_brain.ListenLoop()
 		}
 		AddThinkToEnt(listener_bot, "Think")
+
+		start_program = false
 	}
 
 
@@ -79,16 +83,12 @@ class :: python_listener {
 
 
 			bot_angle_data.append({
-				bot_id = bot_id,
-				pitch = pitch,
-				yaw =  yaw
+				id = bot_id,
+				y = pitch,
+				x =  yaw
 			})
 		}
-		foreach(id,value in bot_angle_data) {
-			printl(format("1: %d, 2: %f, 3: %f.", id, value.pitch, value.yaw))
-		}
 
-		printl("Angles loaded correctly!")
 		return;
 	}
 
@@ -96,49 +96,58 @@ class :: python_listener {
 
 		// Input from pyton
 		input_message = FileToString(in_file_path)
+		StringToFile(in_file_path, "") // emptying *in* file
 
-		if (input_message == null) {
+		local parts = split(input_message,  "|")
+
+		if (input_message == null || input_message ==  "") {
 			return;
 		}
-		if (input_message == "") {
-			return;
-		}
+		local message_type = strip(parts[0])
 
-		local msg = strip(input_message)
-		if (msg == "exit") {
+		printl(input_message)
+		printl(start_program)
+		if (message_type == "exit") {
 			printl("Ending program")
-			StringToFile(in_file_path, "") // emptying *in* file
 			listener_bot.Kill()
-
 			FireScriptHook("Kill_BotHandler", null)
 			return;
 		}
-		if(msg == "start") {
+
+		if(message_type == "start") {
 			printl("Starting program!")
+			start_program = true
+		}
+
+		if (!start_program) {
+			printl("Clearing in file")
 			return;
 		}
-		if(msg == "\0") {
-			print("Thats my own sign: \\0")
-			return;
+
+		printl(message_type)
+		if (message_type == "get_position") {
+			printl("Sending Positions")
+			if (!FireScriptHook("SendPositions", null)) {
+				printl("Could not fire Hook: SendPositions()")
+			}
+
 		}
-		if(msg == "kebab") { // debug command
-			printl("kebab")
-			FireScriptHook("Set_Angles", {
-				data = [
-					{id=2, x=50.0, y=50.0},
-					{id=3, x=67.0, y=76.0},
-				]
-			})
-			FireScriptHook("Change_Pos", null)
+		if (message_type == "angles") {
+			local data = parts[1]
+			DispatchAngleMessage(data)
+
+
+			if (!FireScriptHook("Set_Angles", {
+			        data =  bot_angle_data
+			    })) {
+				printl("Could not fire Hook: SendPositions()")
+			}
+
+			if (!FireScirptHook("Change_Pos", null)) {
+				printl("Could not fire Hook: Change_Pos()")
+			}
 		}
 
-		StringToFile(in_file_path, "") // emptying *in* file
-
-		DispatchAngleMessage(input_message)
-
-		//printl("Writing to python: " + input_message)
-		// Output to python
-		StringToFile(out_file_path, input_message)
 	}
 }
 

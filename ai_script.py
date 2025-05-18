@@ -30,31 +30,33 @@ class BotType(Enum):
 
 
 class TfBot: 
-    bot_type : BotType
-    pos_x : np.float64
-    pos_y : np.float64
-    pos_z : np.float64
+    def __init__(
+            self,
+            pos_x: float = 0.0,
+            pos_y: float = 0.0,
+            pos_z: float = 0.0,
+            pitch: float = 0.0,
+            yaw: float = 0.0,
+            vel_x: float = 0.0,
+            vel_y: float = 0.0,
+            vel_z: float = 0.0,
+            bot_type: BotType = BotType.NONE,
+            damage_dealt: float = 0.0
+        ):
+            self.pos_x = np.float64(pos_x)
+            self.pos_y = np.float64(pos_y)
+            self.pos_z = np.float64(pos_z)
 
-    pitch : np.float64
-    yaw : np.float64
+            self.pitch = np.float64(pitch)
+            self.yaw = np.float64(yaw)
 
-    vel_x : np.float64
-    vel_y : np.float64
-    vel_Z  : np.float64
+            self.vel_x = np.float64(vel_x)
+            self.vel_y = np.float64(vel_y)
+            self.vel_z = np.float64(vel_z)
 
-    damage_dealt : np.float64
- 
-    def __init__(pos_x=0, pos_y=0, pos_z=0, pitch = 0.0, yaw=0.0, vel_x=0.0, vel_y=0.0, vel_z=0.0, bot_type = BotType.NONE, damage_dealt = 0.0): 
-        pos_x = pos_x
-        pos_y = pos_y
-        pos_z = pos_z
-        pitch = pitch
-        yaw = yaw
-        vel_x = vel_x
-        vel_y = vel_y
-        vel_z = vel_z
-        bot_type = bot_type
-        damage_dealt = damage_dealt
+            self.bot_type = bot_type
+            self.damage_dealt = np.float64(damage_dealt)
+
 
 
 
@@ -83,14 +85,20 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
     with open(SQUIRREL_OUT_PATH, 'r+') as in_file: 
         # formats: 
         # p (postion) t/s (target/shooter) bot_id pos_x pos_y pos_z
-        # d (damage) bot_id damage   
+        # d (damage) bot_id damage 
+          
         lines = in_file.readlines()
 
+        #removing last character of last line (this buggy nullbyte)
+        if lines and lines[-1]:  
+            lines[-1] = lines[-1][:-1]
+
+        position_data = False
+        damage_data = False
+        
         for line in lines:
             parts = line.split(sep=" ")
 
-            position_data = False
-            damage_data = False
             
             #mparts[0] = message type
             match parts[0]: 
@@ -123,18 +131,27 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
                 case"_":
                     print("Error: why start of message is: " + parts[0])
 
-            if damage_data and position_data:
-                print("Error? : I got damage_data and postion_data in 1 message")
-            elif damage_data:
-                received_damage_data.set()
-            elif position_data:
-                received_damage_data.set()
+
+        if damage_data and position_data:
+            print("Error? : I got damage_data and postion_data in 1 message")
+        elif damage_data:
+            received_damage_data.set()
+        elif position_data:
+            received_positions_data.set()
 
         in_file.truncate(0) # clearing contents
     
 
 def tf2_listener_and_sender(player_input_messages:Queue, bots:dict[np.int64,TfBot]):
     print("Listening on tf2 files")
+
+    #clearing in and out files
+    with open(SQUIRREL_OUT_PATH, 'w') as in_file: 
+        in_file.truncate(0)
+
+    with open(SQUIRREL_IN_PATH, 'w') as out_file: 
+        out_file.truncate(0)
+    
 
     while not end_program.is_set():
         #input
@@ -164,8 +181,13 @@ def user_input_listener(player_input_messages:Queue):
             user_input = input("[You] > ").strip()
             if user_input.lower() == "exit":
                 end_program.set()
+            elif user_input.lower() == "start":
+                player_input_messages.put("start |")
+                start_program.set()
             else:
-                player_input_messages.put(user_input + " |")            
+                player_input_messages.put(user_input + " |")  
+
+            send_message.set()          
                                 
         except (KeyboardInterrupt,EOFError):
             print("Keyboard error occured")
@@ -174,13 +196,14 @@ def user_input_listener(player_input_messages:Queue):
 
 def send_angles(bots: dict[np.int64,TfBot], player_input_messages: Queue):
 
-    player_input_messages.put("angles | ")
+    message = "angles |"
 
     # message format:
     # bot_id pitch (y) yaw (x)
     for bot_id,bot in zip (bots.keys(), bots.values()):
-        player_input_messages.put("{0} {1} {2}".format(bot_id, bot.pitch, bot.yaw))
+        message += (" {0} {1} {2}\n".format(bot_id, bot.pitch, bot.yaw))
 
+    player_input_messages.put(message)
     send_message.set()
 
 
@@ -197,12 +220,15 @@ def main():
     tf_listener.start()
     user_listener.start()
 
+    iteration  = 0
+
     while not end_program.is_set():
         #start program
         if not start_program.is_set():
             time.sleep(0.05)
             continue
         
+        time.sleep(0.5)
         #request data postion data
         player_input_messages.put("get_position |") #alway end message_type with "|"
         send_message.set()
@@ -210,35 +236,35 @@ def main():
         #waiting for response
         while not received_positions_data.is_set():
             time.sleep(0.25)
+        received_positions_data.clear() #removing flag
 
         # HERE WE PUT OUR GREAT AI MODEL
         for bot in bots.values():
-            bot.pitch *= 1.5
+            bot.pitch = random.uniform(-90, 90)
             bot.pitch %= 90
 
-            bot.yaw *= 1.5
+            bot.yaw = random.uniform(-90, 90)
             bot.yaw %= 90
 
-
-        send_angles(bots)
+        print("Sending angles")
+        send_angles(bots, player_input_messages)
         
         # wait for damage response
-        time.sleep(5.0)
+        time.sleep(3.0)
 
-        #just to be sure
-        while not received_damage_data.is_set():
-            time.sleep(0.05)
-
+        if not received_damage_data.is_set():
+            print("Nobody hit the targed")
         for bot_id, bot in zip(bots.keys(), bots.values()):
             if bot.damage_dealt != 0:
                 print("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
             else:
-                print("Bot: {} , did not hit".format(bot_id))
+                print("Bot: {0} , did not hit".format(bot_id))
             
             #reseting damage_dealt!!
             bot.damage_dealt = 0
 
         #loop ends ig
+        iteration += 1
 
 
     tf_listener.join()
