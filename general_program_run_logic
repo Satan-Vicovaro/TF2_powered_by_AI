@@ -22,3 +22,6 @@
         
  Python_listener: (start, dawaj_dane, ustaw_kąty) <- Python
  Target_Bot: (send_postions,sends_kto_trafił) <- Script_hook
+ Bot_Handler: (set_angles, change_bot_pos) <- Script_hook
+
+
