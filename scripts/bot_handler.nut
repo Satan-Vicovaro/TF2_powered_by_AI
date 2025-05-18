@@ -59,9 +59,6 @@ class::bot_handler {
             bot_pos.y = center_pos.y + radius * sin(angle)
             ent.SetLocalOrigin(bot_pos)
         }
-
-        //local target = bot_handler.GetTargetBot()
-        //target.SetLocalOrigin(center_pos)
     }
 
     function RotateBot(bot_id, yaw, pitch) {

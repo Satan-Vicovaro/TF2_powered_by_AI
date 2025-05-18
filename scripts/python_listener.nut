@@ -103,7 +103,9 @@ class :: python_listener {
 		if (input_message == "") {
 			return;
 		}
-		if (input_message == "exit") {
+
+		local msg = strip(input_message)
+		if (msg == "exit") {
 			printl("Ending program")
 			StringToFile(in_file_path, "") // emptying *in* file
 			listener_bot.Kill()
@@ -111,15 +113,16 @@ class :: python_listener {
 			FireScriptHook("Kill_BotHandler", null)
 			return;
 		}
-		if(input_message == "start") {
+		if(msg == "start") {
 			printl("Starting program!")
 			return;
 		}
-		if(input_message == "\0") {
+		if(msg == "\0") {
 			print("Thats my own sign: \\0")
 			return;
 		}
-		if(input_message == "kebab") {
+		if(msg == "kebab") { // debug command
+			printl("kebab")
 			FireScriptHook("Set_Angles", {
 				data = [
 					{id=2, x=50.0, y=50.0},
