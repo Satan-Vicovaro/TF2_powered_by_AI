@@ -14,7 +14,7 @@ class :: python_listener {
     constructor(){
 		bot_angle_data = {}
 		out_file_path = "squirrel_out";
-        in_file_path = "squirrel_in";
+    in_file_path = "squirrel_in";
 		listener_bot = SpawnEntityFromTable("base_boss",
 		{
 			targetname = "bot",
@@ -103,22 +103,33 @@ class :: python_listener {
 		if (input_message == "") {
 			return;
 		}
-		if (input_message == "exit") {
-			print("Ending program")
+
+		local msg = strip(input_message)
+		if (msg == "exit") {
+			printl("Ending program")
 			StringToFile(in_file_path, "") // emptying *in* file
 			listener_bot.Kill()
+
+			FireScriptHook("Kill_BotHandler", null)
 			return;
 		}
-		if(input_message == "start") {
+		if(msg == "start") {
 			printl("Starting program!")
 			return;
 		}
-		if(input_message == "\0") {
+		if(msg == "\0") {
 			print("Thats my own sign: \\0")
 			return;
 		}
-		if(input_message == "kebab") {
-			EntFireByHandle( self, "Kebab", """, 0, self, self)
+		if(msg == "kebab") { // debug command
+			printl("kebab")
+			FireScriptHook("Set_Angles", {
+				data = [
+					{id=2, x=50.0, y=50.0},
+					{id=3, x=67.0, y=76.0},
+				]
+			})
+			FireScriptHook("Change_Pos", null)
 		}
 
 		StringToFile(in_file_path, "") // emptying *in* file
@@ -129,8 +140,6 @@ class :: python_listener {
 		// Output to python
 		StringToFile(out_file_path, input_message)
 	}
-
 }
 
 p_listener <- python_listener()
-
