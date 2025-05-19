@@ -136,14 +136,13 @@ class :: python_listener {
 			local data = parts[1]
 			DispatchAngleMessage(data)
 
-
 			if (!FireScriptHook("Set_Angles", {
 			        data =  bot_angle_data
 			    })) {
 				printl("Could not fire Hook: SendPositions()")
 			}
 
-			if (!FireScirptHook("Change_Pos", null)) {
+			if (!FireScriptHook("Change_Pos", null)) {
 				printl("Could not fire Hook: Change_Pos()")
 			}
 		}
