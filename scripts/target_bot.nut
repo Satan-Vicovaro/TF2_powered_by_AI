@@ -61,7 +61,7 @@ class ::TargetBot
         local origin = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS);
 
         local dir = Vector();
-        RandomVectorInUnitSphere(dir);
+        VS.RandomVectorInUnitSphere(dir);
         dir *= radius;
 
         local targetPos = origin + dir;
