@@ -34,6 +34,8 @@ class ::TargetBot
         local bot_list = []
         local ent = null
         while (ent = Entities.FindByClassname(ent, "player")) {
+            if (ent == GetListenServerHost()) continue
+
             if (ent.GetTeam() == TF_TEAM_BLUE) {
                 bot_list.append(ent)
             }
@@ -207,6 +209,7 @@ getroottable()[EventsID] <-
         {
             if (debug) printl("damage to other entity")
         }
+        params.damage = 0
     }
 
     // SendPositions hook
