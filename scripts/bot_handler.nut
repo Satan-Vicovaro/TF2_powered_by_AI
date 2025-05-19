@@ -39,7 +39,6 @@ class::bot_handler {
     }
 
     function MakeBotsFire() {
-        bot_list = GetBots()
         foreach(i, ent in bot_list) {
             local weapon = ent.GetActiveWeapon()
             weapon.PrimaryAttack()
@@ -62,12 +61,14 @@ class::bot_handler {
     }
 
     function RotateBot(bot_id, yaw, pitch) {
-        if(bot_id < 0 || bot_id >= bot_list.len()-1) {
-            printl("Bad index")
-            return;
-        }
+        local ent = null
 
-        local ent = bot_list[bot_id]
+        foreach(i, bot in bot_list) {
+            if (bot.entindex() == bot_id) {
+                ent = bot
+                break
+            }
+        }
 
         if (!ent) {
             printl("RotateBot: invalid entity.");
@@ -97,8 +98,21 @@ class::bot_handler {
     }
 }
 
-
 bot_handler <- ::bot_handler()
+
+function ClearStringFromPool(string)
+{
+	local dummy = Entities.CreateByClassname("info_target")
+	dummy.KeyValueFromString("targetname", string)
+	NetProps.SetPropBool(dummy, "m_bForcePurgeFixedupStrings", true)
+	dummy.Destroy()
+}
+
+function EntFireCodeSafe(entity, code, delay = 0.0, activator = null, caller = null)
+{
+	EntFireByHandle(entity, "RunScriptCode", code, delay, activator, caller)
+	ClearStringFromPool(code)
+}
 
 
 local EventsID = UniqueString()
@@ -117,13 +131,16 @@ getroottable()[EventsID] <-
             bot_handler.RotateBot(data.id, data.y, data.x)
         }
 
-        bot_handler.MakeBotsFire()
+        EntFireCodeSafe(GetListenServerHost(), "bot_handler.MakeBotsFire()", 0.3)
+        //bot_handler.MakeBotsFire()
     }
 
     OnScriptHook_Change_Pos = function(_) {
-        local radius = RandomInt(300, 1000)
-
+        local radius = rand() % 700 + 300
         bot_handler.TeleportBots(Vector(0,0,140), radius)
+        print("Changed positions radius=")
+        print(radius)
+        print("\n")
     }
 
 	// Cleanup events on round restart
