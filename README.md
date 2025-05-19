@@ -1,20 +1,23 @@
-TF2 powered by AI
+# TF2_powered_by_AI
 
-We are developing cutting-edge, super-advanced Artificial Intelligence to enhance TF2 server performance.
+Glowna petla naszego modelu:
 
-Current Todo Tasks:
+-   wyslac id,x,y,z do pliku
+-   plik leci do pytona
+-   pyton mowi jak strzelić
+-   pyton wysyla do pliku
+-   bot_handler odczytuje gdzie strzelić i bot strzela
+-   bot_handler odczytuje ile damagu zadal
+-   info o damagu wraca w pliku do pytona (co git co nie git), pyton ocenia
 
-• Level 0:  
-  - Create a script to place directories and files correctly in the TF2 source code.
+### Uruchomienie programu
 
-• Level 1:  
-  - Develop a VScript named "CrateBots" to create bots.  
-  - Create a VScript called "ExtractDataFromBots" to extract data from bots and send it to a Python script.  
-  - Write a Python script to receive the data and perform necessary modifications.  
-  - Implement a VScript "ReceiveData" to receive data from the I/O script and apply changes to bots.  
-  - Design a proper test map using the Hammer Map Editor.
+1. Przenoszenie do plików gry: `python load_to_tf2.py`
+2. Nasłuchiwanie na dane z gry: `python ai_script.py`
+3. Ustawienie botów (konsola gry): `exec server_init`
+4. Uruchomienie programu (skrypt python): `start`
 
-Useful Links:
+### Useful Links:
 
 • TF2 VScripts Functions: https://developer.valvesoftware.com/wiki/Team_Fortress2/Scripting/Script_Functions  
 • TF2 VScripts Examples: https://developer.valvesoftware.com/wiki/Team_Fortress2/Scripting/VScript_Examples
