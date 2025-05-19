@@ -205,10 +205,8 @@ getroottable()[EventsID] <-
         else
         {
             if (debug) printl("damage to other entity")
-		    
-		params.damage = 0
         }
-        
+        params.damage = 0
     }
 
     // SendPositions hook
@@ -239,7 +237,15 @@ getroottable()[EventsID] <-
     // SendDamage hook
     OnScriptHook_SendDamage = function(_) {
         if(debug) printl("SendDamage hook")
-        append_to_file("squirrel_out", spawnedBot.damage_register)
+	if(spawnedBot.damage_register == "") {
+		// no damage case
+		 append_to_file("squirrel_out", "none")
+	}
+	else {
+		// damage done
+		append_to_file("squirrel_out", spawnedBot.damage_register)
+	}
+
         spawnedBot.damage_register = ""
     }
 }
