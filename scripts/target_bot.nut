@@ -1,61 +1,53 @@
+//Globals
 ::FLT_MAX <- 3.402823466e+38
 ::TF_TEAM_RED <- 2
-::GRAV_MIN <- 0.00001
+::TF_TEAM_BLUE <- 3
+::MOVETYPE_NOCLIP <- 8
+::MOVECOLLIDE_DEFAULT <- 0
+::IGNORE_ENEMIES <- 1024
+::STATUE_HEIGHT <- 0
 
 // Debugging constant
 const debug = true
 
 // Bot spawn constants
 const DMG_BEFORE_REPOSITION = 100 // TODO specify how much damage for bot to reposition
-
-const SPAWN_RADIUS = 100
+const SPAWN_RADIUS = 200
 const ORIGIN_X = 0
 const ORIGIN_Y = 0
+const MAX_HEALTH = 10000
+const GRAV_MIN = 0.00001
+
+IncludeScript("vs_math")
 
 class ::TargetBot
 {
     bot = null
-    bot_pos = null
-    seq_idle = null
-    health = 10000
+    health = MAX_HEALTH
     reposition_damage = DMG_BEFORE_REPOSITION
-    max_health = 10000
+    auto_reposition = true
+    damage_register = ""
 
-    // nested contructor handling 2 cases:
-    // 1) the bot already exists on server -> getting the bot entity
-    // 2) the bot doesn't exist -> spawning it from scratch
     constructor(arg)
     {
-        if (typeof arg == "instance" && arg.IsValid())
-        {
-            // existing bot
-            this.bot = arg
+        // get a blue bot
+        local bot_list = []
+        local ent = null
+        while (ent = Entities.FindByClassname(ent, "player")) {
+            if (ent.GetTeam() == TF_TEAM_BLUE) {
+                bot_list.append(ent)
+            }
         }
-        else if (typeof arg == "Vector")
-        {
-            // new spawn
-         this.bot = SpawnEntityFromTable("base_boss",
-            {
-                targetname = "target_bot",
-                origin = arg,
-                model = "models/bots/soldier/bot_soldier.mdl",
-                playbackrate = 1.0,
-                health = 10000
-            })
-        }
+        this.bot = bot_list[0]
 
-        this.bot.AcceptInput("SetStepHeight", "18", null, null)
-        this.bot.ValidateScriptScope()
-        local scope = this.bot.GetScriptScope()
-        scope.bot_brain <- this
-
-        this.bot_pos = this.bot.GetOrigin()
-        this.seq_idle = this.bot.LookupSequence("Stand_MELEE")
-
-        printl("Grav contrustor" + this.bot.GetGravity())
+        this.bot.SetGravity(GRAV_MIN)
+        this.bot.SetHealth(health)
+        this.bot.SetLocalOrigin(Vector(0, 0, 0))
+        this.bot.SetMoveType(MOVETYPE_NOCLIP,  MOVECOLLIDE_DEFAULT)
+        this.bot.AddBotAttribute(1024)
     }
 
-    // moves bot to destination Vector and logs position to a file
+    // moves bot to destination Vector
     function move_to_position(destination)
     {
         this.bot.SetLocalOrigin(destination)
@@ -65,37 +57,21 @@ class ::TargetBot
     // Moves the bot to a random location within a sphere of radius RADIUS around ORIGIN
     function move_to_random_position()
     {
-        local radius = SPAWN_RADIUS // you can tweak this
-        local origin = Vector(ORIGIN_X, ORIGIN_Y, 2*SPAWN_RADIUS)
-        // Generate random point in unit sphere
-        local dir;
-        do {
-            dir = Vector(
-                RandomFloat(-1.0, 1.0),
-                RandomFloat(-1.0, 1.0),
-                RandomFloat(-1.0, 1.0)
-            );
-        } while (dir.LengthSqr() > 1.0); // reject points outside the unit sphere
+        local radius = SPAWN_RADIUS;
+        local origin = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS);
 
-        // Scale to desired radius
-        dir *= RandomFloat(0.0, radius);
+        local dir = Vector();
+        RandomVectorInUnitSphere(dir);
+        dir *= radius;
 
-        // Final position
         local targetPos = origin + dir;
 
         move_to_position(targetPos);
-        printl("Grav move to random" + this.bot.GetGravity())
     }
-
 }
+
 
 // --------------------------Helper functions--------------------------
-
-// gets random value in a specified range
-function get_random_in_range(min, max)
-{
-    return min + rand() % (max - min + 1);
-}
 
 // returns instance of target_bot on the server
 function get_instance()
@@ -153,48 +129,18 @@ function append_to_file(filename,  textToAppend)
     if (file_contents == null)
         file_contents = textToAppend
     else {
-        file_contents += ("\n" + textToAppend)
+        file_contents += (textToAppend)
     }
     send_to_file(filename, file_contents)
 }
 
-// -------------------------------Calls--------------------------------
-
-::spawnedBot <- get_instance()
-spawnedBot.bot.SetGravity(0.00001)
-if(!debug)
-    spawnedBot.move_to_random_position()
-else
-{
-    spawnedBot.move_to_random_position()
-}
-
-// --------------------------Event collection---------------------------
-
-// registers game events
-function collect_events_in_scope(events)
-{
-    local events_id = UniqueString();
-    local events_table = {};
-
-    // Bind all event callbacks to the current object context
-    foreach (name, callback in events)
-        events_table[name] <- callback.bindenv(getroottable());
-
-    // Register the events
-    __CollectGameEventCallbacks(events_table);
-
-    // Optionally store the table in root if you want external reference
-    getroottable()[events_id] <- events_table;
-}
-
+// sends positions of bots in red team to a string, in which prefix is appended to every line
 function shooter_bots_positions_to_string(prefix)
 {
     // get all shooter bots
     local bot_list = []
     local ent = null
     while (ent = Entities.FindByClassname(ent, "player")) { //our bots are player class
-        //printl(ent)
         // lets assume that bots are in RED team
         if (ent.GetTeam() == TF_TEAM_RED) {
             bot_list.append(ent)
@@ -210,12 +156,26 @@ function shooter_bots_positions_to_string(prefix)
     return return_string
 }
 
+// ------------------------Target bot creation-------------------------
 
-// collecting events
-collect_events_in_scope({
-    //called when target_bot gets damaged
-    function OnScriptHook_OnTakeDamage(params)
-	{
+::spawnedBot <- get_instance()
+// spawnedBot.bot.SetGravity(0.00001)
+if(!debug)
+    spawnedBot.move_to_random_position()
+else
+{
+    spawnedBot.move_to_random_position()
+}
+
+// --------------------------Event collection---------------------------
+
+local EventsID = UniqueString()
+getroottable()[EventsID] <-
+{
+
+    OnScriptHook_OnTakeDamage = function(params) {
+        // this takes the longest
+
         // checks if damage was done to target_bot
         if (params.const_entity == spawnedBot.bot) {
             if (debug) printl("target_bot took damage")
@@ -225,18 +185,21 @@ collect_events_in_scope({
 
             if (attacker.IsPlayer() && attacker != null)
             {
-                if (debug) printl(attacker + " did " + damage + " dmg")
-                if(debug) printl("Bots health: " + spawnedBot.health)
+                if (debug) printl(attacker + " did " + damage + " dmg" + "\nBots health: " + spawnedBot.health)
 
-                append_to_file("squirrel_out",  format("d %d %f", attacker.entindex(), damage))
+                // append_to_file("squirrel_out",  format("d %d %f", attacker.entindex(), damage))
+                spawnedBot.damage_register +=  format("d %d %f\n", attacker.entindex(), damage)
 
-                // reposition logic
-                spawnedBot.health -= damage
-                if (spawnedBot.max_health - spawnedBot.health >= spawnedBot.reposition_damage)
+                if(spawnedBot.auto_reposition)
                 {
-                    if (debug) printl("reposition")
-                    spawnedBot.move_to_random_position()
-                    spawnedBot.health = spawnedBot.max_health
+                    // reposition logic
+                    spawnedBot.health -= damage
+                    if (MAX_HEALTH - spawnedBot.health >= spawnedBot.reposition_damage)
+                    {
+                        if (debug) printl("reposition")
+                        spawnedBot.move_to_random_position()
+                        spawnedBot.health = MAX_HEALTH
+                    }
                 }
             }
         }
@@ -244,10 +207,10 @@ collect_events_in_scope({
         {
             if (debug) printl("damage to other entity")
         }
-	}
+    }
 
-    // called when a script requests for postition_data
-    function OnScriptHook_SendPositions(params) {
+    // SendPositions hook
+    OnScriptHook_SendPositions = function(_) {
         // sending target_bot position to squirrel_out
         local complete_positions_data_string = ""
         // appending target bot position
@@ -260,7 +223,25 @@ collect_events_in_scope({
         if (debug) printl(complete_positions_data_string)
     }
 
-    function OnScriptHook_Reposition(params) {
+    // Reposition hook
+    OnScriptHook_Reposition = function(_) {
         spawnedBot.move_to_random_position()
     }
-});
+
+	// Disabling hooks
+	OnScriptHook_KillTargetBot = function(_) {
+        printl("Deleting hooks for targetBot")
+        delete getroottable()[EventsID]
+    }
+
+    // SendDamage hook
+    OnScriptHook_SendDamage = function(_) {
+        if(debug) printl("SendDamage hook")
+        append_to_file("squirrel_out", spawnedBot.damage_register)
+        spawnedBot.damage_register = ""
+    }
+}
+
+local EventsTable = getroottable()[EventsID]
+foreach (name, callback in EventsTable) EventsTable[name] = callback.bindenv(this)
+__CollectGameEventCallbacks(EventsTable)
