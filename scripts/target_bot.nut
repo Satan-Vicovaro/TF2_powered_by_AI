@@ -28,7 +28,7 @@ class ::TargetBot
     auto_reposition = true
     damage_register = ""
 
-    constructor(arg)
+    constructor()
     {
         // get a blue bot
         local bot_list = []
@@ -42,11 +42,15 @@ class ::TargetBot
         }
         this.bot = bot_list[0]
 
+        // setting attributes
         this.bot.SetGravity(GRAV_MIN)
         this.bot.SetHealth(health)
         this.bot.SetLocalOrigin(Vector(0, 0, 0))
         this.bot.SetMoveType(MOVETYPE_NOCLIP,  MOVECOLLIDE_DEFAULT)
         this.bot.AddBotAttribute(1024)
+
+        // initial state
+        this.move_to_random_position()
     }
 
     // moves bot to destination Vector
@@ -75,21 +79,21 @@ class ::TargetBot
 
 // --------------------------Helper functions--------------------------
 
-// returns instance of target_bot on the server
-function get_instance()
-{
-    local bot = Entities.FindByName(null, "target_bot");
-    if (bot == null) {
-        if (debug) printl("spawning target_bot")
-        bot = TargetBot(Vector(0, 0, 64));
-        return bot
-    }
-    else {
-        if (debug) printl("recreating target_bot")
-        local recreated_bot = TargetBot(bot)
-        return recreated_bot
-    }
-}
+// // returns instance of target_bot on the server
+// function get_instance()
+// {
+//     local bot = Entities.FindByName(null, "target_bot");
+//     if (bot == null) {
+//         if (debug) printl("spawning target_bot")
+//         bot = TargetBot(Vector(0, 0, 64));
+//         return bot
+//     }
+//     else {
+//         if (debug) printl("recreating target_bot")
+//         local recreated_bot = TargetBot(bot)
+//         return recreated_bot
+//     }
+// }
 
 // returns string containing components of vec
 function vector_to_string(vec)
@@ -160,14 +164,7 @@ function shooter_bots_positions_to_string(prefix)
 
 // ------------------------Target bot creation-------------------------
 
-::spawnedBot <- get_instance()
-// spawnedBot.bot.SetGravity(0.00001)
-if(!debug)
-    spawnedBot.move_to_random_position()
-else
-{
-    spawnedBot.move_to_random_position()
-}
+::spawnedBot <- TargetBot()
 
 // --------------------------Event collection---------------------------
 
