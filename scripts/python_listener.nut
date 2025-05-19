@@ -105,8 +105,8 @@ class :: python_listener {
 		}
 		local message_type = strip(parts[0])
 
-		printl(input_message)
-		printl(start_program)
+#		printl(input_message)
+#		printl(start_program)
 		if (message_type == "exit") {
 			printl("Ending program")
 			listener_bot.Kill()
@@ -145,6 +145,12 @@ class :: python_listener {
 			}
 
 		}
+		if (message_type ==  "send_damage") {
+			if (!FireScriptHook("SendDamage", null)) {
+				printl("Could not fire Hook: SendDamage()")
+			}
+		}
+
 
 		if (message_type == "change_shooter_pos" ) {
 			if (!FireScriptHook("Change_Pos", null)) {

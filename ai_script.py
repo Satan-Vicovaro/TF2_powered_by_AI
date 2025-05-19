@@ -93,6 +93,11 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
         if lines and lines[-1]:  
             lines[-1] = lines[-1][:-1]
 
+        if lines[0] == "none" :
+            received_damage_data.set()
+            in_file.truncate(0) # clearing contents
+            return
+
         position_data = False
         damage_data = False
         
@@ -235,7 +240,7 @@ def main():
         send_message.set()
 
         #waiting for response
-        while not received_positions_data.is_set() and not end_program.is_set():
+        while not received_positions_data.is_set(): #and not end_program.is_set():
             time.sleep(0.25)
         received_positions_data.clear() #removing flag
 
@@ -246,15 +251,18 @@ def main():
             bot.yaw =  random.uniform(-89,89) # yaw (-89,89?) -89 = up
 
         
-        print("Sending angles")
-        send_angles(bots, player_input_messages)
-
-        iteration += 30.0  
-        
+        #print("Sending angles")
+        send_angles(bots, player_input_messages) 
         
         # wait for damage response
         time.sleep(3.0)
 
+        player_input_messages.put( "send_damage |" )
+        send_message.set()
+
+        while not received_damage_data.is_set(): #and not end_program.is_set():
+            time.sleep(0.01)
+        received_damage_data.clear()
 
         #evaluate function        
         if not received_damage_data.is_set():
@@ -263,8 +271,8 @@ def main():
         for bot_id, bot in zip(bots.keys(), bots.values()):
             if bot.damage_dealt != 0:
                 print("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
-            else:
-                print("Bot: {0} , did not hit".format(bot_id))
+            #else:
+            #   print("Bot: {0} , did not hit".format(bot_id))
             
             #reseting damage_dealt!!
             bot.damage_dealt = 0
