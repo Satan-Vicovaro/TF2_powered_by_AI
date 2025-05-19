@@ -220,7 +220,7 @@ def main():
     tf_listener.start()
     user_listener.start()
 
-    iteration  = 0
+    iteration  = 0.0
 
     while not end_program.is_set():
         #start program
@@ -228,32 +228,38 @@ def main():
             time.sleep(0.05)
             continue
         
-        time.sleep(0.5)
+        time.sleep(0.25)
+        
         #request data postion data
         player_input_messages.put("get_position |") #alway end message_type with "|"
         send_message.set()
 
         #waiting for response
-        while not received_positions_data.is_set():
+        while not received_positions_data.is_set() and not end_program.is_set():
             time.sleep(0.25)
         received_positions_data.clear() #removing flag
 
         # HERE WE PUT OUR GREAT AI MODEL
         for bot in bots.values():
-            bot.pitch = random.uniform(-90, 90)
-            bot.pitch %= 90
+            bot.pitch = random.uniform(-179,179)
 
-            bot.yaw = random.uniform(-90, 90)
-            bot.yaw %= 90
+            bot.yaw =  random.uniform(-89,89) # yaw (-89,89?) -89 = up
 
+        
         print("Sending angles")
         send_angles(bots, player_input_messages)
+
+        iteration += 30.0  
+        
         
         # wait for damage response
         time.sleep(3.0)
 
+
+        #evaluate function        
         if not received_damage_data.is_set():
             print("Nobody hit the targed")
+       
         for bot_id, bot in zip(bots.keys(), bots.values()):
             if bot.damage_dealt != 0:
                 print("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
@@ -264,7 +270,7 @@ def main():
             bot.damage_dealt = 0
 
         #loop ends ig
-        iteration += 1
+        #iteration += 1
 
 
     tf_listener.join()

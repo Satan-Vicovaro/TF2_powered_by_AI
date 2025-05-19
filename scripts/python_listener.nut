@@ -111,6 +111,7 @@ class :: python_listener {
 			printl("Ending program")
 			listener_bot.Kill()
 			FireScriptHook("Kill_BotHandler", null)
+			FireScriptHook("KillTargetBot", null)
 			return;
 		}
 
@@ -132,6 +133,7 @@ class :: python_listener {
 			}
 
 		}
+
 		if (message_type == "angles") {
 			local data = parts[1]
 			DispatchAngleMessage(data)
@@ -142,11 +144,19 @@ class :: python_listener {
 				printl("Could not fire Hook: SendPositions()")
 			}
 
+		}
+
+		if (message_type == "change_shooter_pos" ) {
 			if (!FireScriptHook("Change_Pos", null)) {
 				printl("Could not fire Hook: Change_Pos()")
 			}
 		}
 
+		if (message_type ==  "change_target_pos") {
+			if (!FireScriptHook("Reposition", null)) {
+				printl("Could not fire Hook: Reposition()")
+			}
+		}
 	}
 }
 
