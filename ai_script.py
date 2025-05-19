@@ -240,8 +240,15 @@ def main():
         send_message.set()
 
         #waiting for response
-        while not received_positions_data.is_set(): #and not end_program.is_set():
+        while not received_positions_data.is_set():
+            
+            if end_program.is_set():        
+                tf_listener.join()
+                user_listener.join()
+                return
+            
             time.sleep(0.25)
+        
         received_positions_data.clear() #removing flag
 
         # HERE WE PUT OUR GREAT AI MODEL
@@ -257,10 +264,14 @@ def main():
         # wait for damage response
         time.sleep(3.0)
 
-        player_input_messages.put( "send_damage |" )
+        player_input_messages.put( "send_damage|" )
         send_message.set()
 
         while not received_damage_data.is_set(): #and not end_program.is_set():
+            if end_program.is_set():        
+                tf_listener.join()
+                user_listener.join()
+                return
             time.sleep(0.01)
         received_damage_data.clear()
 
