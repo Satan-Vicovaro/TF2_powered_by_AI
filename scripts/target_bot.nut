@@ -205,8 +205,10 @@ getroottable()[EventsID] <-
         else
         {
             if (debug) printl("damage to other entity")
+		    
+		params.damage = 0
         }
-        params.damage = 0
+        
     }
 
     // SendPositions hook
