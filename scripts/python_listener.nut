@@ -1,5 +1,7 @@
-
 ::FLT_MAX <- 3.402823466e+38
+
+const debug = false
+
 class :: python_listener {
     out_file_path = null;
     in_file_path = null;
@@ -10,7 +12,7 @@ class :: python_listener {
 	output_message = null;
 	input_message = null;
 
-	bot_angle_data =  null // bot_id -> pitch, yaw, eg. bot_angle_data[bot_id].yaw = ...
+	bot_angle_data =  null
 
 	start_program = null
 	constructor(){
@@ -46,11 +48,6 @@ class :: python_listener {
 		start_program = false
 	}
 
-
-	function Kebab() {
-		printl("Jestem w Kebabie")
-	}
-
 	function DispatchAngleMessage(message) {
 		// information format:
 		// *bot_id* *pitch* *yaw*
@@ -58,7 +55,7 @@ class :: python_listener {
 		local message_parts = split(message, " ") // separating on space
 
 		local parts_num = message_parts.len()
-		if (parts_num % 3 != 1) { // well tehre is always one " " string at the front, miss by one error ig
+		if (parts_num % 3 != 1) { // well there is always one " " string at the front, miss by one error ig
 			printl(format("Did not get good amount of parameters: %d (should be div by 3)", parts_num))
 			foreach (i, part in message_parts) {
 				printl( i + " " + part)
@@ -76,11 +73,10 @@ class :: python_listener {
 			message_parts[i+1] =  strip(message_parts[i+1])
 			message_parts[i+2] =  strip(message_parts[i+2])
 
-			printl(format("1: %s, 2: %s, 3: %s.", message_parts[i], message_parts[i + 1], message_parts[i + 2]))
+			if (debug) {printl(format("1: %s, 2: %s, 3: %s.", message_parts[i], message_parts[i + 1], message_parts[i + 2]))}
 			local bot_id = message_parts[i].tointeger()
 			local pitch = message_parts[i+1].tofloat()
 			local yaw = message_parts[i+2].tofloat()
-
 
 			bot_angle_data.append({
 				id = bot_id,
@@ -104,9 +100,9 @@ class :: python_listener {
 			return;
 		}
 		local message_type = strip(parts[0])
+		if (debug) {printl("input message" + input_message)}
 
-#		printl(input_message)
-#		printl(start_program)
+
 		if (message_type == "exit") {
 			printl("Ending program")
 			listener_bot.Kill()
@@ -121,13 +117,12 @@ class :: python_listener {
 		}
 
 		if (!start_program) {
-			printl("Clearing in file")
 			return;
 		}
 
 		printl(message_type)
 		if (message_type == "get_position") {
-			printl("Sending Positions")
+			if (debug) {printl("Sending Positions")}
 			if (!FireScriptHook("SendPositions", null)) {
 				printl("Could not fire Hook: SendPositions()")
 			}

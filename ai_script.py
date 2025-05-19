@@ -93,6 +93,7 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
         if lines and lines[-1]:  
             lines[-1] = lines[-1][:-1]
 
+        #if damage was not dealed
         if lines[0] == "none" :
             received_damage_data.set()
             in_file.truncate(0) # clearing contents
@@ -225,8 +226,6 @@ def main():
     tf_listener.start()
     user_listener.start()
 
-    iteration  = 0.0
-
     while not end_program.is_set():
         #start program
         if not start_program.is_set():
@@ -248,49 +247,40 @@ def main():
                 return
             
             time.sleep(0.25)
-        
         received_positions_data.clear() #removing flag
+
 
         # HERE WE PUT OUR GREAT AI MODEL
         for bot in bots.values():
             bot.pitch = random.uniform(-179,179)
-
-            bot.yaw =  random.uniform(-89,89) # yaw (-89,89?) -89 = up
+            bot.yaw =  random.uniform(-89,89) # yaw < 0  = up
 
         
-        #print("Sending angles")
         send_angles(bots, player_input_messages) 
         
         # wait for damage response
         time.sleep(3.0)
 
+        #requesting damage data
         player_input_messages.put( "send_damage|" )
         send_message.set()
 
-        while not received_damage_data.is_set(): #and not end_program.is_set():
+        while not received_damage_data.is_set(): 
             if end_program.is_set():        
                 tf_listener.join()
                 user_listener.join()
                 return
             time.sleep(0.01)
         received_damage_data.clear()
-
-        #evaluate function        
-        if not received_damage_data.is_set():
-            print("Nobody hit the targed")
-       
+ 
         for bot_id, bot in zip(bots.keys(), bots.values()):
             if bot.damage_dealt != 0:
                 print("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
-            #else:
-            #   print("Bot: {0} , did not hit".format(bot_id))
-            
+ 
             #reseting damage_dealt!!
             bot.damage_dealt = 0
 
         #loop ends ig
-        #iteration += 1
-
 
     tf_listener.join()
     user_listener.join()
