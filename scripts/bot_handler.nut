@@ -1,7 +1,8 @@
 // https://developer.valvesoftware.com/wiki/Team_Fortress_2/Scripting/Script_Functions/Constants
 ::TF_TEAM_RED <- 2
 ::TF_TEAM_BLUE <- 3
-::NO_MISSION <- 0
+::MIN_RADIUS <- 250
+::MAX_RADIUS <- 1000
 
 class::bot_handler {
 	bot_list = []
@@ -49,8 +50,9 @@ class::bot_handler {
 
     // Places bots evenly around a circle of a given center point and radius
     //
-    function TeleportBots(center_pos, radius) {
+    function TeleportBots(center_pos) {
         foreach(i, ent in bot_list) {
+            local radius = rand() % (MAX_RADIUS - MIN_RADIUS) + MIN_RADIUS
             local angle = 2 * PI * i / bot_list.len()
             local bot_pos = ent.GetLocalOrigin()
 
@@ -94,7 +96,7 @@ class::bot_handler {
 
     function Setup() {
         BotIgnoreEnemy()
-        TeleportBots(Vector(0,0,140), 250)
+        TeleportBots(Vector(0,0,0))
     }
 }
 
@@ -136,11 +138,7 @@ getroottable()[EventsID] <-
     }
 
     OnScriptHook_Change_Pos = function(_) {
-        local radius = rand() % 700 + 300
-        bot_handler.TeleportBots(Vector(0,0,140), radius)
-        print("Changed positions radius=")
-        print(radius)
-        print("\n")
+        bot_handler.TeleportBots(Vector(0,0,140))
     }
 
 	// Cleanup events on round restart

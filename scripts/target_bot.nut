@@ -25,7 +25,7 @@ class ::TargetBot
     bot = null
     health = MAX_HEALTH
     reposition_damage = DMG_BEFORE_REPOSITION
-    auto_reposition = true
+    auto_reposition = false
     damage_register = ""
 
     constructor()
