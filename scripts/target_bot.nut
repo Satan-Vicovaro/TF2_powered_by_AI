@@ -8,7 +8,7 @@
 ::STATUE_HEIGHT <- 0
 
 // Debugging constant
-const debug = true
+const debug = false
 
 // Bot spawn constants
 const DMG_BEFORE_REPOSITION = 100 // TODO specify how much damage for bot to reposition

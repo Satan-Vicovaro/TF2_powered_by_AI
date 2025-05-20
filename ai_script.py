@@ -5,7 +5,9 @@ import os
 from queue import Queue
 import numpy as np
 from enum import Enum, auto
-
+import logging
+import colorlog
+import colorama
 
 #replace those lines with proper paths:
 SQUIRREL_IN_PATH = "/mnt/a3e71cc8-0490-43a5-abb9-3d05162d3dee/SteamLibrary/steamapps/common/Team Fortress 2/tf/scriptdata/squirrel_in" 
@@ -13,7 +15,42 @@ SQUIRREL_OUT_PATH = "/mnt/a3e71cc8-0490-43a5-abb9-3d05162d3dee/SteamLibrary/stea
 POLLING_INTERVAL = 0.01 # in seconds [s]
 MAX_DURATION = 10 # seconds
 
+#-----------------------------------logger + ⭐️ fancy colors ⭐️ ----------------------------------------------- 
 
+colorama.init()  # Required on Windows to support ANSI colors
+
+handler = colorlog.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter(
+    "%(log_color)s[%(levelname)s] %(message)s",
+    log_colors={
+        'DEBUG':    'cyan',
+        'INFO':     'green',
+        'WARNING':  'yellow',
+        'ERROR':    'red',
+        'CRITICAL': 'bold_red,bg_white',
+    }
+))
+
+logger = logging.getLogger("ai_script")
+logger.setLevel(logging.INFO)
+
+# Create and attach a console handler
+#formatter = logging.Formatter('[%(levelname)s] %(message)s')
+#console.setFormatter(formatter)
+#console = logging.StreamHandler()
+logger.addHandler(handler)
+
+# Function to toggle debug logging
+def enable_debug():
+    logger.setLevel(logging.DEBUG)
+    logger.debug("Debugging enabled")
+
+def disable_debug():
+    logger.setLevel(logging.INFO)
+    logger.info("Debugging disabled")
+
+
+#------------------------------------ thread flags -----------------------------------
 end_program = threading.Event()
 
 start_program = threading.Event()
@@ -66,6 +103,7 @@ def handle_squirrel_input(player_input_messages:Queue):
     if player_input_messages.empty() :     
         return
     
+    logger.debug("tf2_listener: sending message to squirrel")
     #looking at Python OUT file
     with open(SQUIRREL_IN_PATH, "w+") as out_file: #squirrel_in == python_out
         #message format: message_type (string) | data (optional)
@@ -88,12 +126,13 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
         # p (postion) t/s (target/shooter) bot_id pos_x pos_y pos_z
         # d (damage) bot_id damage 
           
+        logger.debug("tf2_listener: received output from squirrel")
+        
         lines = in_file.readlines()
 
         #removing last character of last line (this buggy nullbyte)
         if lines and lines[-1]:  
             lines[-1] = lines[-1][:-1]
-
         #if damage was not dealed
         if lines[0] == "none" :
             received_damage_data.set()
@@ -132,15 +171,15 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
                     bot_id = np.int64(parts[1])
                     damage = np.float64(parts[2])
                     if not bot_id in bots:
-                        print("Error: Bot with id: " + str(bot_id) + " does not exist")                    
+                        logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")                    
                     bots[bot_id].damage_dealt = damage
 
                 case"_":
-                    print("Error: why start of message is: " + parts[0])
+                    logger.error("Error: why start of message is: " + parts[0])
 
 
         if damage_data and position_data:
-            print("Error? : I got damage_data and postion_data in 1 message")
+            logger.error("Error? : I got damage_data and postion_data in 1 message")
         elif damage_data:
             received_damage_data.set()
         elif position_data:
@@ -150,7 +189,7 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
     
 
 def tf2_listener_and_sender(player_input_messages:Queue, bots:dict[np.int64,TfBot]):
-    print("Listening on tf2 files")
+    logger.info("tf2_listener: Listening on tf2 files")
 
     #clearing in and out files
     with open(SQUIRREL_OUT_PATH, 'w') as in_file: 
@@ -182,7 +221,8 @@ def tf2_listener_and_sender(player_input_messages:Queue, bots:dict[np.int64,TfBo
 
 
 def user_input_listener(player_input_messages:Queue):
-    print("listening for player input") 
+    logger.info("listening for player input") 
+
     while not end_program.is_set():
         try:
             user_input = input("[You] > ").strip()
@@ -191,13 +231,18 @@ def user_input_listener(player_input_messages:Queue):
             elif user_input.lower() == "start":
                 player_input_messages.put("start |")
                 start_program.set()
+            elif user_input.lower() == "debug on": 
+                enable_debug()
+            elif user_input.lower() == "debug off": 
+                disable_debug()
             else:
                 player_input_messages.put(user_input + " |")  
 
+            logger.debug("User_listener: Got input form player")
             send_message.set()          
                                 
         except (KeyboardInterrupt,EOFError):
-            print("Keyboard error occured")
+            logger.error("Keyboard error occured")
             end_program.set()
 
 
@@ -237,17 +282,17 @@ def main():
         # watiging for squirrel to init it self 
         time.sleep(0.25) 
         
-        print("iteration: " + str(iteration))
+        logger.info("iteration: " + str(iteration))
         #request data postion data
         player_input_messages.put("get_position |") #alway end message_type with "|"
         send_message.set()
 
-        print("Waiting for positions")
+        logger.debug("Waiting for positions")
         #waiting for positions
         if not received_positions_data.wait(timeout = MAX_DURATION):
-            print("Received position timeout reached, restarting the loop...")
+            logger.warning("Received position timeout reached, restarting the loop...")
             restart_count += 1
-            print("Restart count: " + str(restart_count))
+            logger.warning("Restart count: " + str(restart_count))
             continue
 
         received_positions_data.clear() #removing flag
@@ -258,7 +303,7 @@ def main():
             bot.pitch = random.uniform(-179,179)
             bot.yaw =  random.uniform(-89,89) # yaw < 0  = up
 
-        print("Sending angles")
+        logger.debug("Sending angles")
         send_angles(bots, player_input_messages) 
         
         # wait for damage response
@@ -268,26 +313,26 @@ def main():
         player_input_messages.put( "send_damage|" )
         send_message.set()
 
-        print("waiting for damage data")
+        logger.debug("waiting for damage data")
         # waiting for damage data
         if not received_damage_data.wait(MAX_DURATION):
-            print("Received damage data timeout reached, restarting the loop...")
+            logger.warning("Received damage data timeout reached, restarting the loop...")
             restart_count += 1
-            print("Restart count: " + str(restart_count))
+            logger.warning("Restart count: " + str(restart_count))
             continue
         received_damage_data.clear() # don't forget to clear the flag
         
-        print("Bot damage data: ")
+        logger.info("Bot damage data: ")
         for bot_id, bot in zip(bots.keys(), bots.values()):
             if bot.damage_dealt != 0:
-                print("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
+                logger.info("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
  
             #reseting damage_dealt!!
             bot.damage_dealt = 0
 
         iteration += 1
         #loop ends ig
-
+        
     tf_listener.join()
     user_listener.join()
 
