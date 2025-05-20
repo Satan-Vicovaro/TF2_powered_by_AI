@@ -11,6 +11,7 @@ from enum import Enum, auto
 SQUIRREL_IN_PATH = "/mnt/a3e71cc8-0490-43a5-abb9-3d05162d3dee/SteamLibrary/steamapps/common/Team Fortress 2/tf/scriptdata/squirrel_in" 
 SQUIRREL_OUT_PATH = "/mnt/a3e71cc8-0490-43a5-abb9-3d05162d3dee/SteamLibrary/steamapps/common/Team Fortress 2/tf/scriptdata/squirrel_out"
 POLLING_INTERVAL = 0.01 # in seconds [s]
+MAX_DURATION = 10 # seconds
 
 
 end_program = threading.Event()
@@ -225,28 +226,30 @@ def main():
     
     tf_listener.start()
     user_listener.start()
-
+    
+    iteration = 0
+    restart_count = 0
     while not end_program.is_set():
+        
         #start program
-        if not start_program.is_set():
-            time.sleep(0.05)
-            continue
+        start_program.wait()    
+
+        # watiging for squirrel to init it self 
+        time.sleep(0.25) 
         
-        time.sleep(0.25)
-        
+        print("iteration: " + str(iteration))
         #request data postion data
         player_input_messages.put("get_position |") #alway end message_type with "|"
         send_message.set()
 
-        #waiting for response
-        while not received_positions_data.is_set():
-            
-            if end_program.is_set():        
-                tf_listener.join()
-                user_listener.join()
-                return
-            
-            time.sleep(0.25)
+        print("Waiting for positions")
+        #waiting for positions
+        if not received_positions_data.wait(timeout = MAX_DURATION):
+            print("Received position timeout reached, restarting the loop...")
+            restart_count += 1
+            print("Restart count: " + str(restart_count))
+            continue
+
         received_positions_data.clear() #removing flag
 
 
@@ -255,7 +258,7 @@ def main():
             bot.pitch = random.uniform(-179,179)
             bot.yaw =  random.uniform(-89,89) # yaw < 0  = up
 
-        
+        print("Sending angles")
         send_angles(bots, player_input_messages) 
         
         # wait for damage response
@@ -265,14 +268,16 @@ def main():
         player_input_messages.put( "send_damage|" )
         send_message.set()
 
-        while not received_damage_data.is_set(): 
-            if end_program.is_set():        
-                tf_listener.join()
-                user_listener.join()
-                return
-            time.sleep(0.01)
-        received_damage_data.clear()
- 
+        print("waiting for damage data")
+        # waiting for damage data
+        if not received_damage_data.wait(MAX_DURATION):
+            print("Received damage data timeout reached, restarting the loop...")
+            restart_count += 1
+            print("Restart count: " + str(restart_count))
+            continue
+        received_damage_data.clear() # don't forget to clear the flag
+        
+        print("Bot damage data: ")
         for bot_id, bot in zip(bots.keys(), bots.values()):
             if bot.damage_dealt != 0:
                 print("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
@@ -280,6 +285,7 @@ def main():
             #reseting damage_dealt!!
             bot.damage_dealt = 0
 
+        iteration += 1
         #loop ends ig
 
     tf_listener.join()

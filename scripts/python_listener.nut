@@ -123,6 +123,7 @@ class :: python_listener {
 		printl(message_type)
 		if (message_type == "get_position") {
 			if (debug) {printl("Sending Positions")}
+			printl("Sending Positions")
 			if (!FireScriptHook("SendPositions", null)) {
 				printl("Could not fire Hook: SendPositions()")
 			}
@@ -133,6 +134,7 @@ class :: python_listener {
 			local data = parts[1]
 			DispatchAngleMessage(data)
 
+			printl("Setting angles")
 			if (!FireScriptHook("Set_Angles", {
 			        data =  bot_angle_data
 			    })) {
@@ -141,6 +143,7 @@ class :: python_listener {
 
 		}
 		if (message_type ==  "send_damage") {
+			printl("sending damage")
 			if (!FireScriptHook("SendDamage", null)) {
 				printl("Could not fire Hook: SendDamage()")
 			}
