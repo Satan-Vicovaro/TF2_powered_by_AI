@@ -34,25 +34,18 @@ class AnglePredictor(nn.Module):
         return self.model(x)
 
 
-    def evaluate(input_tensor, predicted_angles, bot:TfBot.TfBot):        
-        value = bot.damage_dealt + 50.0
-
-        return value 
-
-
+#this function should be gradient-like
 def evaluate_bot(s_bot:tf.TfBot, angles:torch.Tensor):
     
-    value:np.float64 = 0
     #advicing bots to shoot somewere in the air
-    if angles[1] < 0 and angles[1] > -0.8:
-        value += random.randrange(2,10)
-    else:
-        value += -2 
+    target = - 0.4
+    diff = abs(float(angles[1]) - target)
+    value = float(max(-1, 10 - diff * 25))
 
     if s_bot.damage_dealt > 0:
-        return value + s_bot.damage_dealt + 75
+        return -(value + s_bot.damage_dealt)
     else:
-        return value
+        return -(value)
 
 def evaluate_the_batch(s_bots:dict[np.int64,tf.TfBot]):
     #this evaluation is lame, bcs AI does not know which batch smple was correct
@@ -199,7 +192,7 @@ def main():
     
     # ai setup 
     initial_weights = get_flat_params(model).detach().numpy()
-    es = cma.CMAEvolutionStrategy(initial_weights, 0.5)
+    es = cma.CMAEvolutionStrategy(initial_weights, 0.1)
     cma._warnings.filterwarnings('ignore', message='The number of solutions passed to `tell` should.*') # disabling waring
     
 
@@ -253,10 +246,12 @@ def main():
             # load one bot to model
             angles[bot_id] = model(torch.tensor([s_bot.pos_x,s_bot.pos_y,s_bot.pos_z,
                                 t_bot.pos_x,t_bot.pos_y,t_bot.pos_z], dtype = torch.float32))
+            lg.logger.debug("Bot_input: x:{} y:{} z:{} x:{} y:{} z:{}".format(s_bot.pos_x,s_bot.pos_y,s_bot.pos_z,
+                                                                              t_bot.pos_x,t_bot.pos_y,t_bot.pos_z))
 
         # now all bots have angles chosen by AI
 
-
+        #lg.logger.debug(angles)
         lg.logger.debug("Sending angles")
         send_tensor_angles(player_input_messages, angles)
 
