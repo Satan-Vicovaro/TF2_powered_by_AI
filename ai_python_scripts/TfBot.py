@@ -21,17 +21,24 @@ class TfBot:
             bot_type: BotType = BotType.NONE,
             damage_dealt: float = 0.0
         ):
-            self.pos_x = np.float64(pos_x)
-            self.pos_y = np.float64(pos_y)
-            self.pos_z = np.float64(pos_z)
+            self.pos_x = np.float32(pos_x)
+            self.pos_y = np.float32(pos_y)
+            self.pos_z = np.float32(pos_z)
 
-            self.pitch = np.float64(pitch)
-            self.yaw = np.float64(yaw)
+            self.pitch = np.float32(pitch)
+            self.yaw = np.float32(yaw)
 
-            self.vel_x = np.float64(vel_x)
-            self.vel_y = np.float64(vel_y)
-            self.vel_z = np.float64(vel_z)
+            self.vel_x = np.float32(vel_x)
+            self.vel_y = np.float32(vel_y)
+            self.vel_z = np.float32(vel_z)
 
             self.bot_type = bot_type
-            self.damage_dealt = np.float64(damage_dealt)
+            self.damage_dealt = np.float32(damage_dealt)
+
+    def normalize(self):        
+        normalize_factor = 1000.0 #aka radius of out circle
+        self.pos_x /= normalize_factor
+        self.pos_y /= normalize_factor
+        self.pos_z /= normalize_factor
+        
 
