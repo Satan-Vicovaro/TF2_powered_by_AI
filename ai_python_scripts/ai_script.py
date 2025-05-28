@@ -42,10 +42,14 @@ def evaluate_bot(s_bot:tf.TfBot, angles:torch.Tensor):
     diff = abs(float(angles[1]) - target)
     value = float(max(-1, 10 - diff * 25))
 
+    if -0.6 < angles[1] < 0.8:
+        value += float(random.uniform(2,10))
+
+
     if s_bot.damage_dealt > 0:
-        return -(value + s_bot.damage_dealt)
+        return -float(value + s_bot.damage_dealt + 10.0)
     else:
-        return -(value)
+        return -float(value)
 
 def evaluate_the_batch(s_bots:dict[np.int64,tf.TfBot]):
     #this evaluation is lame, bcs AI does not know which batch smple was correct
@@ -284,12 +288,13 @@ def main():
 
         iteration += 1
         es.tell(solutions,scores)
-        lg.logger.debug(scores)  
+        lg.logger.info(scores)  
 
         if iteration % 50 == 0:
             player_input_messages.put("change_shooter_pos |")
-        if iteration % 30 == 0:
-            player_input_messages.put("change_target_pos |")
+        
+        #if iteration % 30 == 0:
+        #    player_input_messages.put("change_target_pos |")
         # for flat_weights in solutions:
 
         #     # Apply weights to model
