@@ -8,12 +8,41 @@ from enum import Enum, auto
 import logging
 import colorlog
 import colorama
+import json
 
-#replace those lines with proper paths:
-SQUIRREL_IN_PATH = "/mnt/a3e71cc8-0490-43a5-abb9-3d05162d3dee/SteamLibrary/steamapps/common/Team Fortress 2/tf/scriptdata/squirrel_in" 
-SQUIRREL_OUT_PATH = "/mnt/a3e71cc8-0490-43a5-abb9-3d05162d3dee/SteamLibrary/steamapps/common/Team Fortress 2/tf/scriptdata/squirrel_out"
+
 POLLING_INTERVAL = 0.01 # in seconds [s]
 MAX_DURATION = 10 # seconds
+
+SQUIRREL_IN_PATH = None
+SQUIRREL_OUT_PATH = None
+
+import json
+from pathlib import Path
+
+def load_existing_config(config_path: Path) -> dict:
+    if not config_path.exists():
+        raise FileNotFoundError(f"[config] Expected config file not found at: {config_path}")
+    with config_path.open("r") as f:
+        return json.load(f)
+
+def initialize_paths():
+    global SQUIRREL_IN_PATH, SQUIRREL_OUT_PATH
+
+    # Config file is one directory above the script
+    config_path = Path.cwd().parent / "config.json"
+
+    config = load_existing_config(config_path)
+
+    if "scriptdata" not in config:
+        raise KeyError("[config] 'scriptdata' key missing from config.json")
+
+    scriptdata_path = Path(config["scriptdata"])
+    SQUIRREL_IN_PATH = scriptdata_path / "squirrel_in"
+    SQUIRREL_OUT_PATH = scriptdata_path / "squirrel_out"
+
+    print("[paths] SQUIRREL_IN_PATH =", SQUIRREL_IN_PATH)
+    print("[paths] SQUIRREL_OUT_PATH =", SQUIRREL_OUT_PATH)
 
 #-----------------------------------logger + ⭐️ fancy colors ⭐️ ----------------------------------------------- 
 
@@ -61,6 +90,8 @@ received_positions_data = threading.Event()
 
 received_damage_data = threading.Event()
 
+received_bullet_data = threading.Event()
+
 class BotType(Enum):
     NONE = 0
     SHOOTER = 't'
@@ -79,7 +110,8 @@ class TfBot:
             vel_y: float = 0.0,
             vel_z: float = 0.0,
             bot_type: BotType = BotType.NONE,
-            damage_dealt: float = 0.0
+            damage_dealt: float = 0.0,
+            bullet_distance: float = 0.0
         ):
             self.pos_x = np.float64(pos_x)
             self.pos_y = np.float64(pos_y)
@@ -94,6 +126,7 @@ class TfBot:
 
             self.bot_type = bot_type
             self.damage_dealt = np.float64(damage_dealt)
+            self.bullet_distance = np.float64(bullet_distance)
 
 
 
@@ -134,13 +167,20 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
         if lines and lines[-1]:  
             lines[-1] = lines[-1][:-1]
         #if damage was not dealed
-        if lines[0] == "none" :
+        if lines[0] == "d none" :
             received_damage_data.set()
+            in_file.truncate(0) # clearing contents
+            return
+        
+        #if no distances provided
+        if lines[0] == "b none" :
+            received_bullet_data.set()
             in_file.truncate(0) # clearing contents
             return
 
         position_data = False
         damage_data = False
+        bullet_data = False
         
         for line in lines:
             parts = line.split(sep=" ")
@@ -165,6 +205,14 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
                     else:
                         #create if it does not exit
                         bots[bot_id] = TfBot(pos_x = pos_x, pos_y = pos_y,pos_z = pos_z, bot_type = bot_type)
+                
+                case "b":
+                    bullet_data = True
+                    bot_id = np.int64(parts[1])
+                    distance = np.float64(parts[2])
+                    if not bot_id in bots:
+                        logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")  
+                    bots[bot_id].bullet_distance = distance
 
                 case"d": 
                     damage_data = True
@@ -184,6 +232,8 @@ def handle_squirrel_output(bots:dict[np.int64,TfBot]):
             received_damage_data.set()
         elif position_data:
             received_positions_data.set()
+        elif bullet_data:
+            received_bullet_data.set()
 
         in_file.truncate(0) # clearing contents
     
@@ -261,7 +311,8 @@ def send_angles(bots: dict[np.int64,TfBot], player_input_messages: Queue):
 
 
 def main():
-    
+    initialize_paths()
+
     bots: dict[np.int64,TfBot] = {}
     
     player_input_messages = Queue(2137)  
@@ -313,6 +364,7 @@ def main():
         player_input_messages.put( "send_damage|" )
         send_message.set()
 
+        
         logger.debug("waiting for damage data")
         # waiting for damage data
         if not received_damage_data.wait(MAX_DURATION):
@@ -329,6 +381,28 @@ def main():
  
             #reseting damage_dealt!!
             bot.damage_dealt = 0
+
+
+        # requesting bullets distances from target_bot
+        player_input_messages.put("send_distances|")
+        send_message.set()
+
+        logger.debug("waiting for bullet data")
+        # waiting for damage data
+        if not received_bullet_data.wait(MAX_DURATION):
+            logger.warning("Received bullet data timeout reached, restarting the loop...")
+            restart_count += 1
+            logger.warning("Restart count: " + str(restart_count))
+            continue
+        received_bullet_data.clear() # don't forget to clear the flag
+        
+        logger.info("Bot bullet data: ")
+        for bot_id, bot in zip(bots.keys(), bots.values()):
+            if bot.bullet_distance != 0:
+                logger.info("Bot: {0} , distance: {1}".format(bot_id,bot.bullet_distance))
+ 
+            #reseting bullet_distance!!
+            bot.bullet_distance = 0
 
         iteration += 1
         #loop ends ig
