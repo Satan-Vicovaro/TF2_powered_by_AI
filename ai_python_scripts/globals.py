@@ -14,3 +14,4 @@ received_damage_data = threading.Event()
 
 POLLING_INTERVAL = 0.01 # in seconds [s]
 MAX_DURATION = 10 # seconds
+
