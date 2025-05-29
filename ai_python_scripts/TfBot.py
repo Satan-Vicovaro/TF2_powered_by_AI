@@ -19,7 +19,8 @@ class TfBot:
             vel_y: float = 0.0,
             vel_z: float = 0.0,
             bot_type: BotType = BotType.NONE,
-            damage_dealt: float = 0.0
+            damage_dealt: float = 0.0,
+            bullet_distance: float = 0.0
         ):
             self.pos_x = np.float32(pos_x)
             self.pos_y = np.float32(pos_y)
@@ -33,7 +34,8 @@ class TfBot:
             self.vel_z = np.float32(vel_z)
 
             self.bot_type = bot_type
-            self.damage_dealt = np.float32(damage_dealt)
+            self.damage_dealt = np.float32(damage_dealt) 
+            self.bullet_distance = np.float32(bullet_distance)
 
     def normalize(self):        
         normalize_factor = 1000.0 #aka radius of out circle

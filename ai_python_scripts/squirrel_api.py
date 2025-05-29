@@ -44,15 +44,23 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
         #removing last character of last line (this buggy nullbyte)
         if lines and lines[-1]:  
             lines[-1] = lines[-1][:-1]
+        
         #if damage was not dealed
-        if lines[0] == "none" :
+        if lines[0] == "d none" :
             gl.received_damage_data.set()
+            in_file.truncate(0) # clearing contents
+            return
+        
+        #if no distances provided
+        if lines[0] == "b none" :
+            gl.received_bullet_data.set()
             in_file.truncate(0) # clearing contents
             return
 
         position_data = False
         damage_data = False
-        
+        bullet_data = False
+
         for line in lines:
             parts = line.split(sep=" ")
 
@@ -82,8 +90,18 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
                     bot_id = np.int64(parts[1])
                     damage = np.float64(parts[2])
                     if not bot_id in bots:
-                        lg.logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")                    
+                        lg.logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")       
+                        continue             
                     bots[bot_id].damage_dealt = damage
+
+                case "b":
+                    bullet_data = True
+                    bot_id = np.int64(parts[1])
+                    distance = np.float64(parts[2])
+                    if not bot_id in bots:
+                        lg.logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")  
+                        continue
+                    bots[bot_id].bullet_distance = distance
 
                 case"_":
                     lg.logger.error("Error: why start of message is: " + parts[0])
@@ -95,7 +113,8 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
             gl.received_damage_data.set()
         elif position_data:
             gl.received_positions_data.set()
-
+        elif bullet_data:
+            gl.received_bullet_data.set()
         in_file.truncate(0) # clearing contents
     
 

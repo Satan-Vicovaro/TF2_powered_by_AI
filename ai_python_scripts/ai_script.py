@@ -37,19 +37,16 @@ class AnglePredictor(nn.Module):
 #this function should be gradient-like
 def evaluate_bot(s_bot:tf.TfBot, angles:torch.Tensor):
     
-    #advicing bots to shoot somewere in the air
-    target = - 0.4
-    diff = abs(float(angles[1]) - target)
-    value = float(max(-1, 10 - diff * 25))
+    bullet_eval = s_bot.bullet_distance * 0.01
 
-    if -0.6 < angles[1] < 0.8:
-        value += float(random.uniform(2,10))
-
+    # sometimes values explode idk
+    if bullet_eval > 100.0:
+        bullet_eval = 100.0
 
     if s_bot.damage_dealt > 0:
-        return -float(value + s_bot.damage_dealt + 10.0)
+        return -float(-bullet_eval + s_bot.damage_dealt)
     else:
-        return -float(value)
+        return -float(-bullet_eval)
 
 def evaluate_the_batch(s_bots:dict[np.int64,tf.TfBot]):
     #this evaluation is lame, bcs AI does not know which batch smple was correct
@@ -199,6 +196,9 @@ def main():
     es = cma.CMAEvolutionStrategy(initial_weights, 0.1)
     cma._warnings.filterwarnings('ignore', message='The number of solutions passed to `tell` should.*') # disabling waring
     
+    scores_sum = []
+    accuracy = []
+
 
     while not gl.end_program.is_set():
 
@@ -277,100 +277,59 @@ def main():
             continue
         gl.received_damage_data.clear() # don't forget to clear the flag
 
+         # requesting bullets distances from target_bot
+        player_input_messages.put("send_distances|")
+        gl.send_message.set()
+
+        lg.logger.debug("waiting for bullet data")
+        # waiting for damage data
+        if not gl.received_bullet_data.wait(gl.MAX_DURATION):
+            lg.logger.warning("Received bullet data timeout reached, restarting the loop...")
+            restart_count += 1
+            lg.logger.warning("Restart count: " + str(restart_count))
+            continue
+        gl.received_bullet_data.clear() # don't forget to clear the flag
+        
+
 
         scores = []
 
+        target_hit = 0
         for bot_id,s_bot in shooter_bots.items():
             score = evaluate_bot(s_bot, angles[bot_id])
             scores.append(score)
-            s_bot.damage_dealt = 0
-        
+            if s_bot.damage_dealt != 0:
+                target_hit += 1
 
+            lg.logger.debug("Bot bullet_distance: id:{} d:{} ".format(bot_id, s_bot.bullet_distance)) 
+            s_bot.damage_dealt = 0 
+            s_bot.bullet_distance = 0
+
+
+        lg.logger.debug(scores)
         iteration += 1
         es.tell(solutions,scores)
-        lg.logger.info(scores)  
+        lg.logger.info("Overall evaluation: " + str(sum(scores)))  
+        scores_sum.append(int(sum(scores)))
+        cur_accuracy =  float(target_hit/len(shooter_bots))
+        lg.logger.info("Accuracy: " + str(cur_accuracy))
+        accuracy.append(cur_accuracy)
 
-        if iteration % 50 == 0:
+        if iteration % 500 == 0:
             player_input_messages.put("change_shooter_pos |")
+        if iteration % 750 == 0:
+            player_input_messages.put("change_target_pos |")
         
-        #if iteration % 30 == 0:
-        #    player_input_messages.put("change_target_pos |")
-        # for flat_weights in solutions:
-
-        #     # Apply weights to model
-        #     set_flat_params(model, torch.tensor(flat_weights, dtype=torch.float32))
-            
-        #     # Prepare batch
-        #     training_batch = crate_training_data(target_bots,shooter_bots) # translating dict bots into torch.tensor array 
-
-        #     angle_batch = model(training_batch) # <- that line does all the heavy work ig
-
-
-        #     lg.logger.debug("Sending angles")
-        #     send_tensor_angles(shooter_bots, player_input_messages, angle_batch)
-
-        #     # wait for damage response
-        #     time.sleep(3.0)
-
-            
-        #     #requesting damage data
-        #     player_input_messages.put( "send_damage|" )
-        #     gl.send_message.set()
-
-        #     lg.logger.debug("waiting for damage data")
-        #     # waiting for damage data
-        #     if not gl.received_damage_data.wait(gl.MAX_DURATION):
-        #         lg.logger.warning("Received damage data timeout reached, restarting the loop...")
-        #         restart_count += 1
-        #         lg.logger.warning("Restart count: " + str(restart_count))
-        #         continue
-        #     gl.received_damage_data.clear() # don't forget to clear the flag
-
-
-        #     reward = evaluate_the_batch(shooter_bots)
-        #     scores.append(reward)
-
-        #     iteration += 1
-
-        # es.tell(solutions,scores)
-
-        # # HERE WE PUT OUR GREAT AI MODEL
-        # for bot in bots.values():
-        #     bot.pitch = random.uniform(-179,179)
-        #     bot.yaw =  random.uniform(-89,89) # yaw < 0  = up
-
-        # lg.logger.debug("Sending angles")
-        # send_angles(bots, player_input_messages) 
         
-        # # wait for damage response
-        # time.sleep(3.0)
-
-        # #requesting damage data
-        # player_input_messages.put( "send_damage|" )
-        # gl.send_message.set()
-
-        # lg.logger.debug("waiting for damage data")
-        # # waiting for damage data
-        # if not gl.received_damage_data.wait(gl.MAX_DURATION):
-        #     lg.logger.warning("Received damage data timeout reached, restarting the loop...")
-        #     restart_count += 1
-        #     lg.logger.warning("Restart count: " + str(restart_count))
-        #     continue
-        # gl.received_damage_data.clear() # don't forget to clear the flag
-        
-        # lg.logger.info("Bot damage data: ")
-        # for bot_id, bot in zip(bots.keys(), bots.values()):
-        #     if bot.damage_dealt != 0:
-        #         lg.logger.info("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
- 
-        #     #reseting damage_dealt!!
-        #     bot.damage_dealt = 0
-
-        # iteration += 1
-        # #loop ends ig
-        
+    with open("Overall_eval.txt", 'w') as file:
+        file.write(str(scores_sum))
+    
+    with open("Accuracy.txt", 'w') as file:
+        file.write(str(accuracy))
     tf_listener.join()
     user_listener.join()
+
+
 
     return
 
