@@ -1,11 +1,21 @@
 // Globals
 ::FLT_MAX <- 3.402823466e+38;
 ::distances <- {};
+::min_positions <- {};
+::min_positions_diffs <- {};
 ::TRACKING_RATE <- 0.001
 
-const debug = false;
+const debug = true;
 
 IncludeScript("file_scripts");
+
+local data_modes = {
+    POS_ABS = "pos_abs",
+    DISTANCE = "distance",
+    POS_DIFF = "pos_diff"
+};
+
+local information_mode = data_modes.POS_DIFF;
 
 function ClearStringFromPool(string)
 {
@@ -21,11 +31,22 @@ function EntFireCodeSafe(entity, code, delay = 0.0, activator = null, caller = n
 	ClearStringFromPool(code)
 }
 
+
+/*
+bool AcceptInput(string input, string param, handle activator, handle caller)
+*/
+function FireCodeTest(input, param, activator, caller)
+{
+    return AcceptInput(input, param, activator, caller);
+}
+
 function start_tracking(bot_type)
 {
     ::distances <- {};
-    local ent = null;
+    ::min_positions <- {};
+    ::min_positions_diffs <- {};
 
+    local ent = null;
     local projectile_class = null;
 
     if (bot_type == "soldier") {
@@ -37,6 +58,11 @@ function start_tracking(bot_type)
         return;
     }
 
+    local pos = null;
+    local target_bot_position = null;
+    local pos_diff = null;
+    local target_ent = null;
+
     while (ent = Entities.FindByClassname(ent, projectile_class))
     {
         if (ent != null)
@@ -44,12 +70,7 @@ function start_tracking(bot_type)
             local owner = ent.GetOwner();
             if (owner != null)
             {
-                local ownerIndex = owner.entindex();
-                if (!(ownerIndex in ::distances)) {
-                    ::distances[ownerIndex] <- ::FLT_MAX;
-                }
-
-                EntFireByHandle(ent, "CallScriptFunction", "track_projectile", 0.1, null, null);
+                EntFireCodeSafe(ent, "track_projectile()", 0.1);
             }
         }
     }
@@ -57,7 +78,7 @@ function start_tracking(bot_type)
 
 function closest_point_on_bbox(pos, ent)
 {
-    local origin = ent.GetOrigin();
+    local origin = ent.GetLocalOrigin();
     local mins = ent.GetBoundingMins();
     local maxs = ent.GetBoundingMaxs();
 
@@ -97,8 +118,17 @@ function get_target_bot_entity()
     return null;
 }
 
+function print_map(map)
+{
+   foreach(k,v in map)
+   {
+        printl(k + " : " + v);
+   }
+}
+
 function track_projectile()
 {
+    if(debug) printl("tracking projectile")
     local projectile = self; // 'self' is the entity calling this function          
     
     if (projectile == null)
@@ -112,6 +142,8 @@ function track_projectile()
         local pos = null;
         local owner = null;
         local target_ent = null;
+
+        if(debug) printl("inside try")
         try {
             pos = projectile.GetOrigin();
         } catch(e) {
@@ -130,22 +162,33 @@ function track_projectile()
             printl("target error1 " + e);
         }
 
+        if(debug) printl("afetr tries")
+
         if(target_ent == null || typeof target_ent != "instance") 
         {
             printl("target error2 ");
         }
 
         local target_bot_position = closest_point_on_bbox(pos, target_ent);
+        if(debug) printl("got target's position")
 
         if (owner != null)
         {
             local ownerIndex = owner.entindex();
-            local prevDistance = ::distances[ownerIndex];
+            local prevDistance = null;
+            if(ownerIndex in ::distances)
+                prevDistance = ::distances[ownerIndex]; 
             local currDistance = calculate_distance(pos, target_bot_position);
+            local pos_diff = target_bot_position - pos;
 
-            if (currDistance <= prevDistance)
+            if(debug) printl("all data gathered")
+
+            if (prevDistance == null || currDistance <= prevDistance)
             {
                 ::distances[ownerIndex] <- currDistance;
+                ::min_positions[ownerIndex] <- pos;
+                ::min_positions_diffs[ownerIndex] <- pos_diff;
+                if(debug) printl("found new minimum")
             }
             else {
                 // Finishing calculations if the distance doesn't decrease anymore
@@ -153,7 +196,7 @@ function track_projectile()
             }
 
             // Debug output
-            if(debug) printl("Projectile at " + pos + " | OwnerIndex: " + ownerIndex + " | CurrDist: " + currDistance + " | MinDist: " + ::distances[ownerIndex]);
+            if(debug) printl("Projectile at " + pos + " |  Target at " + target_bot_position + " | CurrDist: " + currDistance + " | MinDist: " + ::distances[ownerIndex]);
             
             // Continue updating
             EntFireCodeSafe(projectile, "track_projectile()", TRACKING_RATE);
@@ -168,21 +211,75 @@ function track_projectile()
     }
 }
 
+function vector_to_string(vec)
+{
+    return format("%.3f %.3f %.3f", vec.x, vec.y, vec.z);
+}
 
 function send_projectile_info() 
 {
-    local projectile_info = "";
+    if(debug) printl("sending info")
 
-    if(::distances.len() == 0) 
+    local projectile_info = "";
+    local source_map = null;
+
+    switch(information_mode) 
+    {
+        case data_modes.POS_ABS:
+            source_map = ::min_positions
+            break;
+        case data_modes.POS_DIFF:
+            source_map = ::min_positions_diffs
+            break;
+        case data_modes.DISTANCE:
+            source_map = ::distances
+            break;
+        default :
+            printl("wrong information mode")
+            return
+    }
+
+    if(source_map.len() == 0) 
     {
         projectile_info = "b none";
     }
     else 
     {
-        foreach(ownerIndex, distance in ::distances)
+        if(debug) printl("send info else")
+
+        local data_type = null
+        foreach(key, val in source_map)
         {
-            projectile_info += format("b %d %f\n", ownerIndex, distance);
+            data_type = typeof val;
+            if(debug) printl("data_type: " + data_type)
+            break;
         }
+
+        if(data_type == "Vector")
+        {
+
+            foreach(ownerIndex, data in source_map)
+            {
+                if(debug) printl("appending line");
+                {
+                    projectile_info += format("b %d %s\n", ownerIndex, vector_to_string(data));
+                    printl("type of double: " + typeof data);            
+                }
+            }
+        }
+        else if(data_type == "float")
+        {
+
+            foreach(ownerIndex, data in source_map)
+            {
+                if(debug) printl("appending line");
+                {
+                    projectile_info += format("b %d %f\n", ownerIndex, data);
+                    printl("type of double: " + typeof data);            
+                }
+            }
+        }
+
     }
 
     append_to_file("squirrel_out", projectile_info);
