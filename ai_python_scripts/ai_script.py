@@ -16,9 +16,15 @@ import ai_module as ai
 import torch
 import torch.nn as nn
 
+
+
 def reset_damage_dealt(bots:dict[np.int64,tf.TfBot]):
     for bot in bots.values():
         bot.damage_dealt = 0
+
+def display_troch_data(angles:torch.Tensor,rewards:torch.Tensor):
+    lg.logger.debug("angles: " + str(angles))
+    lg.logger.debug("rewards: " + str(rewards))
 
 def display_hit_data(bots:dict[np.int64,tf.TfBot]): 
     lg.logger.info("Bot damage data: ")
@@ -30,7 +36,27 @@ def display_hit_data(bots:dict[np.int64,tf.TfBot]):
         bot.damage_dealt = 0
 
 
-def wait_for_positions(restart_count): 
+def send_wait_for_bullet_data(restart_count, player_input_messages:Queue):
+    # requesting bullets distances from target_bot
+    player_input_messages.put("send_distances|")
+    gl.send_message.set()
+
+    lg.logger.debug("waiting for bullet data")
+    # waiting for damage data
+    if not gl.received_bullet_data.wait(gl.MAX_DURATION):
+        lg.logger.warning("Received bullet data timeout reached, restarting the loop...")
+        restart_count += 1
+        lg.logger.warning("Restart count: " + str(restart_count))
+        return True, restart_count
+    gl.received_bullet_data.clear() # don't forget to clear the flag
+    return False, restart_count
+
+def send_and_wait_for_positions(restart_count,player_input_messages:Queue): 
+
+    #request data postion data
+    player_input_messages.put("get_position |") #alway end message_type with "|"
+    gl.send_message.set()
+
     lg.logger.debug("Waiting for positions")
     #waiting for positions
     if not gl.received_positions_data.wait(timeout = gl.MAX_DURATION):
@@ -42,7 +68,11 @@ def wait_for_positions(restart_count):
     return False,restart_count
 
 
-def wait_for_damage_data( restart_count):
+def send_and_wait_for_damage_data( restart_count,player_input_messages:Queue):
+    #requesting damage data
+    player_input_messages.put( "send_damage|" )
+    gl.send_message.set()
+
     lg.logger.debug("waiting for damage data")
     if not gl.received_damage_data.wait(gl.MAX_DURATION):
         lg.logger.warning("Received damage data timeout reached, restarting the loop...")
@@ -85,7 +115,9 @@ def user_input_listener(player_input_messages:Queue):
 
 
 def send_tensor_angles(player_input_messages: Queue, angles:torch.Tensor, s_bots: dict[np.int64, tf.TfBot]):
-
+    
+    lg.logger.debug("Sending angles")
+    
     message = "angles |" 
     
     # message format:
@@ -149,19 +181,20 @@ def evaluate_all_decisions(angles: torch.Tensor, s_bots:dict[np.int64,tf.TfBot],
     # Current evaluation:
     # eval = -distance(m_miss , t_bot.pos) + damage_dealt    
     
-    #p1 = np.array([t_bot.pos_x, t_bot.pos_y, t_bot.pos_z])
-
-    target = -45.0
-    
+    #p1 = np.array([t_bot.pos_x, t_bot.pos_y, t_bot.pos_z]) 
 
     result = torch.zeros((angles.shape[0]))
     for i,s_bot in enumerate(s_bots.values()):
-#       p2 = np.array([s_bot.m_miss_x, s_bot.m_miss_y, s_bot.m_miss_z])
-#       result[i] = - torch.tensor(np.linalg.norm( p1 - p2 ) + s_bot.damage_dealt)
+        #dont shoot into ground
+        if angles[i][0] > 80.0:
+            result -= torch.tensor((angles[i][0]  - 80.0) * -10.0 )
+        
+        #dont shoot into celing
+        if angles[i][0] < -80:
+            result -= torch.tensor((angles[i][0] + 80.0) * -10.0)
+        
+        result[i] +=  torch.tensor(- s_bot.m_distance * 0.01)
 
-        diff = abs(float(angles[i][1]) - target)
-        value = float(max(-20, 20 - diff * 25))
-        result[i] = torch.tensor(value + s_bot.damage_dealt)
     return result
 
 
@@ -208,16 +241,12 @@ def main():
  
         lg.logger.info("iteration: " + str(iteration))
 
-        #request data postion data
-        player_input_messages.put("get_position |") #alway end message_type with "|"
-        gl.send_message.set()
-
-
-        should_restart, restart_count = wait_for_positions(restart_count)
+        should_restart, restart_count = send_and_wait_for_positions(restart_count, player_input_messages)
         if should_restart:
             continue        
         
         normalize_data(bots)
+
         t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
         
         # training_data = dict: int -> torch.Tensor
@@ -226,11 +255,11 @@ def main():
         # we dont extract exact values form out neural network
         # but we get:
         # - mean (most likely action)
-        # - std (standard deviation)
+        # - std (standard deviation of actions)
         # we need them to create proper griadient for evaluation
         means, stds = actor(training_data)
 
-        noise_scale = 0.2  # tune this
+        noise_scale = 0.4  # tune this
         noisy_means = means + torch.randn_like(means) * noise_scale
 
         dist = torch.distributions.Normal(noisy_means, stds)
@@ -239,28 +268,29 @@ def main():
         # angles = Tensor[s_bot_num, 2]    
         
         # angles = mean  #<- this would be the most likley action 
-        raw_angle_sample = dist.sample() # this is some action based from propability
-        
-        squashed = torch.tanh(raw_angle_sample)  # in [-1, 1]
-       
-        scales = torch.tensor([179.0, 89], device=squashed.device)
-        angles = squashed * scales  # now in [-179, 179] and [-89, 89] 
+        angles = dist.sample() # this is some action based from propability
 
-        lg.logger.debug("Sending angles")
+        angles[:, 0] = torch.clamp(angles[:, 0], -89, 89)
+        angles[:, 1] = torch.clamp(angles[:, 1], -179, 179)    
+
+
+        #squashed = torch.tanh(raw_angle_sample)  # in [-1, 1]
+       
+        #scales = torch.tensor([179.0, 89], device=squashed.device)
+        #angles = squashed * scales  # now in [-179, 179] and [-89, 89] 
+
         send_tensor_angles(player_input_messages, angles, s_bots)
 
         # wait for damage response
-        time.sleep(3.0)
+        time.sleep(2.0)
 
-        #requesting damage data
-        player_input_messages.put( "send_damage|" )
-        gl.send_message.set()
-
-        should_restart, restart_count = wait_for_damage_data(restart_count)
+        should_restart, restart_count = send_and_wait_for_damage_data(restart_count, player_input_messages)
         if should_restart:
             continue
         
-
+        should_restart, restart_count = send_wait_for_bullet_data(restart_count, player_input_messages)
+        if should_restart:
+            continue
         # evaluation
         # current option:
         # our_evaluation --teaches--> actor
@@ -276,19 +306,21 @@ def main():
         # Normalize rewards (optional but stabilizes training)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
-        log_probs = dist.log_prob(raw_angle_sample).sum(dim=1)
+        log_probs = dist.log_prob(angles).sum(dim=1)
 
         loss = -(log_probs * rewards).mean()
 
-        actor_optimizer.zero_grad() # resetig gradient
+        actor_optimizer.zero_grad() # reseting gradient
         loss.backward()
         actor_optimizer.step()
 
         display_hit_data(bots)
+        display_troch_data(angles,rewards)
         reset_damage_dealt(bots)
 
         iteration += 1
         #loop ends ig
+        
         
     tf_listener.join()
     user_listener.join()

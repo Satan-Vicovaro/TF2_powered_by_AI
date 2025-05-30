@@ -15,7 +15,7 @@ local data_modes = {
     POS_DIFF = "pos_diff"
 };
 
-local information_mode = data_modes.POS_DIFF;
+local information_mode = data_modes.DISTANCE;
 
 function ClearStringFromPool(string)
 {
@@ -108,7 +108,7 @@ function calculate_distance(pos_A, pos_B)
 function get_target_bot_entity()
 {
     local ent = null;
-    while (ent = Entities.FindByClassname(ent, "player")) 
+    while (ent = Entities.FindByClassname(ent, "player"))
     {
         if (ent == GetListenServerHost()) continue;
         if (ent.GetTeam() == TF_TEAM_BLUE) {
@@ -129,14 +129,14 @@ function print_map(map)
 function track_projectile()
 {
     if(debug) printl("tracking projectile")
-    local projectile = self; // 'self' is the entity calling this function          
-    
+    local projectile = self; // 'self' is the entity calling this function
+
     if (projectile == null)
     {
         printl("Error: projectile (self) is null");
         return;
     }
-   
+
     try {
         if(projectile == null) {printl("Projectile null")}
         local pos = null;
@@ -164,7 +164,7 @@ function track_projectile()
 
         if(debug) printl("afetr tries")
 
-        if(target_ent == null || typeof target_ent != "instance") 
+        if(target_ent == null || typeof target_ent != "instance")
         {
             printl("target error2 ");
         }
@@ -177,7 +177,7 @@ function track_projectile()
             local ownerIndex = owner.entindex();
             local prevDistance = null;
             if(ownerIndex in ::distances)
-                prevDistance = ::distances[ownerIndex]; 
+                prevDistance = ::distances[ownerIndex];
             local currDistance = calculate_distance(pos, target_bot_position);
             local pos_diff = target_bot_position - pos;
 
@@ -197,15 +197,15 @@ function track_projectile()
 
             // Debug output
             if(debug) printl("Projectile at " + pos + " |  Target at " + target_bot_position + " | CurrDist: " + currDistance + " | MinDist: " + ::distances[ownerIndex]);
-            
+
             // Continue updating
             EntFireCodeSafe(projectile, "track_projectile()", TRACKING_RATE);
         }
-        else 
+        else
         {
             printl("owner error2")
         }
-           
+
     } catch (e) {
         if(debug) printl("Error in track_projectile: " + e);
     }
@@ -216,14 +216,14 @@ function vector_to_string(vec)
     return format("%.3f %.3f %.3f", vec.x, vec.y, vec.z);
 }
 
-function send_projectile_info() 
+function send_projectile_info()
 {
     if(debug) printl("sending info")
 
     local projectile_info = "";
     local source_map = null;
 
-    switch(information_mode) 
+    switch(information_mode)
     {
         case data_modes.POS_ABS:
             source_map = ::min_positions
@@ -239,11 +239,11 @@ function send_projectile_info()
             return
     }
 
-    if(source_map.len() == 0) 
+    if(source_map.len() == 0)
     {
         projectile_info = "b none";
     }
-    else 
+    else
     {
         if(debug) printl("send info else")
 
@@ -263,7 +263,7 @@ function send_projectile_info()
                 if(debug) printl("appending line");
                 {
                     projectile_info += format("b %d %s\n", ownerIndex, vector_to_string(data));
-                    printl("type of double: " + typeof data);            
+                    printl("type of double: " + typeof data);
                 }
             }
         }
@@ -275,7 +275,7 @@ function send_projectile_info()
                 if(debug) printl("appending line");
                 {
                     projectile_info += format("b %d %f\n", ownerIndex, data);
-                    printl("type of double: " + typeof data);            
+                    printl("type of double: " + typeof data);
                 }
             }
         }

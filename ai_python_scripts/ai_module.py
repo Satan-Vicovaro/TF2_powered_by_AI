@@ -14,8 +14,8 @@ import TfBot as tf
 #Hyperparameters
 GAMMA = 0.99
 TAU = 0.005
-ACTOR_LR = 1e-4 #actor learning rate
-CRITIC_LR = 1e-3 #critic learning rate
+ACTOR_LR = 1e-2 #actor learning rate
+CRITIC_LR = 1e-2 #critic learning rate
 BUFFER_SIZE = int(1e6) # buffer for ReplayBuffer
 BATCH_SIZE = 64
 

@@ -25,7 +25,7 @@ class :: python_listener {
 			origin = Vector(1700,1700,0),
 			model = "models/bots/skeleton_sniper/skeleton_sniper.mdl",
 			playbackrate = 1.0, // Required for animations to be simulated
-		// The following is done to prevent default base_boss death behavior
+			// The following is done to prevent default base_boss death behavior
 			// Set the health to something really big
 			health = 300
 		})
@@ -48,7 +48,7 @@ class :: python_listener {
 		start_program = false
 	}
 
-	function DispatchAngleMessage(messe) {
+	function DispatchAngleMessage(message) {
 		// information format:
 		// *bot_id* *pitch* *yaw*
 
@@ -73,7 +73,7 @@ class :: python_listener {
 			message_parts[i+1] =  strip(message_parts[i+1])
 			message_parts[i+2] =  strip(message_parts[i+2])
 
- %s, 2: %s, 3: %s.", message_parts[i], message_parts[i + 1], message_parts[i + 2]))}
+			if (debug) {printl(format("1: %s, 2: %s, 3: %s.", message_parts[i], message_parts[i + 1], message_parts[i + 2]))}
 			local bot_id = message_parts[i].tointeger()
 			local pitch = message_parts[i+1].tofloat()
 			local yaw = message_parts[i+2].tofloat()
@@ -83,7 +83,7 @@ class :: python_listener {
 				y = pitch,
 				x =  yaw
 			})
-
+		}
 
 		return;
 	}
@@ -94,7 +94,6 @@ class :: python_listener {
 		input_message = FileToString(in_file_path)
 		StringToFile(in_file_path, "") // emptying *in* file
 
-		
 		local parts = split(input_message,  "|")
 
 		if (input_message == null || input_message ==  "") {
@@ -110,7 +109,7 @@ class :: python_listener {
 			FireScriptHook("Kill_BotHandler", null)
 			FireScriptHook("KillTargetBot", null)
 			return;
-
+		}
 
 		if(message_type == "start") {
 			printl("Starting program!")
@@ -122,8 +121,8 @@ class :: python_listener {
 		}
 
 		printl(message_type)
- (message_type == "get_position") {
-			if (debug) {prntl("Sending Positions")}
+		if (message_type == "get_position") {
+			if (debug) {printl("Sending Positions")}
 			printl("Sending Positions")
 			if (!FireScriptHook("SendPositions", null)) {
 				printl("Could not fire Hook: SendPositions()")
@@ -158,17 +157,17 @@ class :: python_listener {
 		}
 
 		if (message_type == "change_shooter_pos" ) {
-f (!FireScriptHook("Change_Pos", null)) {
+			if (!FireScriptHook("Change_Pos", null)) {
 				printl("Could not fire Hook: Change_Pos()")
-
+			}
 		}
 
 		if (message_type ==  "change_target_pos") {
 			if (!FireScriptHook("Reposition", null)) {
-printl("Could not fire Hook: Reposition()")
+				printl("Could not fire Hook: Reposition()")
 			}
 		}
-
+	}
 }
 
 p_listener <- python_listener()

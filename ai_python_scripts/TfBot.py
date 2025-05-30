@@ -22,7 +22,8 @@ class TfBot:
             damage_dealt: float = 0.0,
             m_miss_x: float = 0.0,
             m_miss_y:float = 0.0,
-            m_miss_z: float = 0.0
+            m_miss_z: float = 0.0,
+            m_distance: float = 0.0,
         ):
             self.pos_x = np.float32(pos_x)
             self.pos_y = np.float32(pos_y)
@@ -41,6 +42,8 @@ class TfBot:
             self.m_miss_x = np.float32(m_miss_x)
             self.m_miss_y = np.float32(m_miss_y)
             self.m_miss_z = np.float32(m_miss_z)
+
+            self.m_distance = np.float32(m_distance)
 
 
     def normalize(self):        
