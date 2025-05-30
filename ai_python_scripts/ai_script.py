@@ -36,6 +36,22 @@ def display_hit_data(bots:dict[np.int64,tf.TfBot]):
         bot.damage_dealt = 0
 
 
+def collect_tracker_data(s_bots:dict[np.int64, tf.TfBot], rewards: torch.Tensor, overall_evaluation_tracker, accuracy_tracker):
+    hits = 0
+    for s_bot in s_bots.values():
+        if s_bot.damage_dealt != 0:
+            hits += 1
+
+    accuracy = float(hits/len(s_bots)) 
+    reward_sum = sum(rewards) 
+
+    lg.logger.info("Sum of rewards: " + str(reward_sum))
+    lg.logger.info("Accuracy: " + str(accuracy))
+    
+    overall_evaluation_tracker.append(int(reward_sum))
+    accuracy_tracker.append(accuracy)
+
+
 def send_wait_for_bullet_data(restart_count, player_input_messages:Queue):
     # requesting bullets distances from target_bot
     player_input_messages.put("send_distances|")
@@ -185,15 +201,15 @@ def evaluate_all_decisions(angles: torch.Tensor, s_bots:dict[np.int64,tf.TfBot],
 
     result = torch.zeros((angles.shape[0]))
     for i,s_bot in enumerate(s_bots.values()):
-        #dont shoot into ground
-        if angles[i][0] > 80.0:
-            result -= torch.tensor((angles[i][0]  - 80.0) * -10.0 )
-        
         #dont shoot into celing
-        if angles[i][0] < -80:
-            result -= torch.tensor((angles[i][0] + 80.0) * -10.0)
+        if angles[i][0] > 80.0:
+            result[i] -= torch.tensor((angles[i][0]  - 80.0) * -10.0 )
         
-        result[i] +=  torch.tensor(- s_bot.m_distance * 0.01)
+        #dont shoot into ground
+        if angles[i][0] < -80:
+            result[i] -= torch.tensor((angles[i][0] + 80.0) * 10.0)
+        
+        result[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2 + s_bot.damage_dealt)
 
     return result
 
@@ -219,18 +235,13 @@ def main():
     # ai setup
     actor = ai.actor
     actor_target = ai.actor_target
-    
-    critic = ai.critic
-    critic_target = ai.critic_target
-
     actor_optimizer = ai.actor_optimizer
-    critic_optimizer = ai.critic_optimizer
-
-    replay_buffer = ai.replay_buffer
-
     state = ai.sample_random_state()
     episode_reward = 0
 
+
+    overall_evaluation_tracker = []
+    accuracy_tracker = []
     # loop
     iteration = 0
     restart_count = 0
@@ -304,24 +315,29 @@ def main():
         rewards = evaluate_all_decisions(angles,s_bots, t_bot)
         
         # Normalize rewards (optional but stabilizes training)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+        rewards_normal = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
         log_probs = dist.log_prob(angles).sum(dim=1)
 
-        loss = -(log_probs * rewards).mean()
+        loss = -(log_probs * rewards_normal).mean()
 
         actor_optimizer.zero_grad() # reseting gradient
         loss.backward()
         actor_optimizer.step()
 
+        collect_tracker_data(s_bots, rewards, overall_evaluation_tracker, accuracy_tracker )
         display_hit_data(bots)
         display_troch_data(angles,rewards)
         reset_damage_dealt(bots)
-
+        
         iteration += 1
         #loop ends ig
         
-        
+    with open("Accuracy.txt", "w") as file:
+        file.write(str(accuracy_tracker))
+   
+    with open("Rewards_sum.txt", "w") as file:
+        file.write(str(overall_evaluation_tracker))
     tf_listener.join()
     user_listener.join()
 
