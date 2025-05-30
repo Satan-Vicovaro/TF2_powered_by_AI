@@ -6,9 +6,40 @@ import os
 import time
 import TfBot as tf
 
-#replace those lines with proper paths:
-SQUIRREL_IN_PATH = "/mnt/a3e71cc8-0490-43a5-abb9-3d05162d3dee/SteamLibrary/steamapps/common/Team Fortress 2/tf/scriptdata/squirrel_in" 
-SQUIRREL_OUT_PATH = "/mnt/a3e71cc8-0490-43a5-abb9-3d05162d3dee/SteamLibrary/steamapps/common/Team Fortress 2/tf/scriptdata/squirrel_out"
+import json
+from pathlib import Path
+
+SQUIRREL_IN_PATH = None
+SQUIRREL_OUT_PATH = None
+
+
+def load_existing_config(config_path: Path) -> dict:
+    if not config_path.exists():
+        raise FileNotFoundError(f"[config] Expected config file not found at: {config_path}")
+    with config_path.open("r") as f:
+        return json.load(f)
+
+def initialize_paths():
+    global SQUIRREL_IN_PATH, SQUIRREL_OUT_PATH
+
+    # Config file is one directory above the script
+    config_path = Path.cwd() / "config.json"
+
+    config = load_existing_config(config_path)
+
+    if "scriptdata" not in config:
+        raise KeyError("[config] 'scriptdata' key missing from config.json")
+
+    scriptdata_path = Path(config["scriptdata"])
+    SQUIRREL_IN_PATH = scriptdata_path / "squirrel_in"
+    SQUIRREL_OUT_PATH = scriptdata_path / "squirrel_out"
+
+    print("[paths] SQUIRREL_IN_PATH =", SQUIRREL_IN_PATH)
+    print("[paths] SQUIRREL_OUT_PATH =", SQUIRREL_OUT_PATH)
+
+
+initialize_paths()
+
 
 def handle_squirrel_input(player_input_messages:Queue):
     if player_input_messages.empty() :     
@@ -44,14 +75,22 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
         #removing last character of last line (this buggy nullbyte)
         if lines and lines[-1]:  
             lines[-1] = lines[-1][:-1]
+        
         #if damage was not dealed
-        if lines[0] == "none" :
+        if lines[0] == "d none" :
             gl.received_damage_data.set()
+            in_file.truncate(0) # clearing contents
+            return
+        
+        #if no distances provided
+        if lines[0] == "b none" :
+            gl.received_bullet_data.set()
             in_file.truncate(0) # clearing contents
             return
 
         position_data = False
-        damage_data = False
+        damage_data = False 
+        bullet_data = False
         
         for line in lines:
             parts = line.split(sep=" ")
@@ -83,7 +122,17 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
                     damage = np.float64(parts[2])
                     if not bot_id in bots:
                         lg.logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")                    
+                        continue
                     bots[bot_id].damage_dealt = damage
+
+                case "b":
+                    bullet_data = True
+                    bot_id = np.int64(parts[1])
+                    distance = np.float64(parts[2])
+                    if not bot_id in bots:
+                        lg.logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")  
+                        continue
+                    bots[bot_id].m_distance = distance
 
                 case"_":
                     lg.logger.error("Error: why start of message is: " + parts[0])
@@ -95,6 +144,8 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
             gl.received_damage_data.set()
         elif position_data:
             gl.received_positions_data.set()
+        elif bullet_data:
+            gl.received_bullet_data.set()
 
         in_file.truncate(0) # clearing contents
     

@@ -19,11 +19,15 @@ class TfBot:
             vel_y: float = 0.0,
             vel_z: float = 0.0,
             bot_type: BotType = BotType.NONE,
+<<<<<<< HEAD
+            damage_dealt: float = 0.0
+=======
             damage_dealt: float = 0.0,
             m_miss_x: float = 0.0,
             m_miss_y:float = 0.0,
             m_miss_z: float = 0.0,
             m_distance: float = 0.0,
+>>>>>>> gradinet_ai
         ):
             self.pos_x = np.float64(pos_x)
             self.pos_y = np.float64(pos_y)
@@ -37,6 +41,9 @@ class TfBot:
             self.vel_z = np.float64(vel_z)
 
             self.bot_type = bot_type
+<<<<<<< HEAD
+            self.damage_dealt = np.float64(damage_dealt)
+=======
             self.damage_dealt = np.float32(damage_dealt)
 
             self.m_miss_x = np.float32(m_miss_x)
@@ -55,4 +62,5 @@ class TfBot:
         self.m_miss_x /= normalize_factor
         self.m_miss_y /= normalize_factor
         self.m_miss_z /= normalize_factor
+>>>>>>> gradinet_ai
 

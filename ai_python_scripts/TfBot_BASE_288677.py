@@ -22,19 +22,18 @@ class TfBot:
             damage_dealt: float = 0.0,
             m_miss_x: float = 0.0,
             m_miss_y:float = 0.0,
-            m_miss_z: float = 0.0,
-            m_distance: float = 0.0,
+            m_miss_z: float = 0.0
         ):
-            self.pos_x = np.float64(pos_x)
-            self.pos_y = np.float64(pos_y)
-            self.pos_z = np.float64(pos_z)
+            self.pos_x = np.float32(pos_x)
+            self.pos_y = np.float32(pos_y)
+            self.pos_z = np.float32(pos_z)
 
-            self.pitch = np.float64(pitch)
-            self.yaw = np.float64(yaw)
+            self.pitch = np.float32(pitch)
+            self.yaw = np.float32(yaw)
 
-            self.vel_x = np.float64(vel_x)
-            self.vel_y = np.float64(vel_y)
-            self.vel_z = np.float64(vel_z)
+            self.vel_x = np.float32(vel_x)
+            self.vel_y = np.float32(vel_y)
+            self.vel_z = np.float32(vel_z)
 
             self.bot_type = bot_type
             self.damage_dealt = np.float32(damage_dealt)
@@ -42,8 +41,6 @@ class TfBot:
             self.m_miss_x = np.float32(m_miss_x)
             self.m_miss_y = np.float32(m_miss_y)
             self.m_miss_z = np.float32(m_miss_z)
-
-            self.m_distance = np.float32(m_distance)
 
 
     def normalize(self):        
