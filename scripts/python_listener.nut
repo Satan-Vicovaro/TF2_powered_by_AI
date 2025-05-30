@@ -150,6 +150,12 @@ class :: python_listener {
 			}
 		}
 
+		if (message_type ==  "send_distances") {
+			printl("sending distances")
+			if (!FireScriptHook("SendProjectileInfo", null)) {
+				printl("Could not fire Hook: SendProjectileInfo()")
+			}
+		}
 
 		if (message_type == "change_shooter_pos" ) {
 f (!FireScriptHook("Change_Pos", null)) {
