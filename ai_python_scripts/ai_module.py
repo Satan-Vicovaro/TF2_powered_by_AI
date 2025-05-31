@@ -20,7 +20,7 @@ TAU = 0.005
 ACTOR_LR = 1e-2 #actor learning rate
 CRITIC_LR = 1e-2 #critic learning rate
 BUFFER_SIZE = int(1e6) # buffer for ReplayBuffer
-BATCH_SIZE = 64
+BATCH_SIZE = 2
 
 
 
@@ -33,6 +33,8 @@ class Actor(nn.Module):
         
         self.shared_net = nn.Sequential(
             nn.Linear(state_dim, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
             nn.ReLU(),
             nn.Linear(32, 32),
             nn.ReLU()
@@ -52,11 +54,17 @@ class Actor(nn.Module):
         x = self.shared_net(state)
 
         raw_mean = self.mean_head(x)  # in [-1, 1]
-        scales = torch.tensor([179.0, 89.0], device=raw_mean.device)
-        mean = raw_mean * scales # now mean[0] in [-179,179] and mean[1] in [-89,89] 
+
+        # scale and offset means
+        device = raw_mean.device
+        scales = torch.tensor([200.0, 89.0], device=device)
+        offsets = torch.tensor([1.0, 0.0], device=device)  # shift for [0,360), [-89,89]
+
+        mean = (raw_mean + offsets) * scales
 
         log_std = self.log_std_head(x)
-        std = torch.exp(log_std.clamp(-20, 2)) # clamp for numerical stability
+        std = torch.exp(log_std.clamp(-20, 2))  # numerical stability
+
         return mean, std
     
 
@@ -87,23 +95,21 @@ class ReplayBuffer: #might not me necessary but AI is forgetfull
         transition: states, actions, rewards \n
         states = [x1, y1, z1, x2, y2, z2] \n 
         actions = [pitch, yaw] \n
-        rewards = float \n
         """
         self.buffer.append(transition)
     
-    def sample(self, batch_size):
+    def sample(self, batch_size = BATCH_SIZE):
         """
         Outputs a random sample as FloatTensor in format: \n
-        states, actions, rewards
+        states, actions
         """
         samples = random.sample(self.buffer, batch_size)
 
-        states, actions, rewards, = zip(*samples)
+        states, actions = zip(*samples)
+        #return (states , actions) 
         return (
-            torch.FloatTensor(states),
-            torch.FloatTensor(actions),
-            torch.FloatTensor(rewards).unsqueeze(1),
-
+            torch.stack(states),
+            torch.stack(actions),
         )
     
     def __len__(self):
@@ -134,7 +140,16 @@ class ReplayBuffer: #might not me necessary but AI is forgetfull
         self.buffer = coppy_buffer
         self.update_file_pickle()        
 
-    def load_form_file_pickle(self):
+    def load_from_file_csv(self):
+        path = "statistics_and_data/training_data.csv"
+        with open(path, "r", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                t_data = torch.tensor(eval(row["Input_data"]))
+                angle = torch.tensor(eval(row["Angle"]))
+                self.add((t_data, angle))
+            
+    def load_from_file_pickle(self):
         with open("statistics_and_data/training_data_pickle", "rb") as file:
             while True:
                 try:
