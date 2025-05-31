@@ -109,7 +109,12 @@ def user_input_listener(player_input_messages:Queue):
                 gl.end_program.set()
             elif user_input.lower() == "start":
                 player_input_messages.put("start |")
+                gl.send_message.set()
+                # watiging for squirrel to init it self 
+                time.sleep(0.25) 
                 gl.start_program.set()
+                continue
+            
             elif user_input.lower() == "debug on": 
                 lg.enable_debug()
             elif user_input.lower() == "debug off": 
@@ -215,9 +220,168 @@ def evaluate_decision(s_bot: tf.TfBot, t_bot:tf.TfBot ):
     p2 = np.array([t_bot.pos_x, t_bot.pos_y, t_bot.pos_z])
     return torch.tensor(-np.linalg.norm(p1 - p2))
 
+def training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, actor:ai.Actor, actor_optimizer:ai.optim, replay_buffer:ai.ReplayBuffer, overall_evaluation_tracker, accuracy_tracker):
+    global restart_count
 
-def main():
+    should_restart, restart_count = send_and_wait_for_positions(restart_count, player_input_messages)
+    if should_restart:
+        return        
+        
+    normalize_data(bots)
+
+    t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
+        
+    # training_data = dict: int -> torch.Tensor
+    training_data = crate_training_data(t_bots,s_bots)  
+
+    # we dont extract exact values form out neural network
+    # but we get:
+    # - mean (most likely action)
+    # - std (standard deviation of actions)
+    # we need them to create proper griadient for evaluation
+    means, stds = actor(training_data)
+
+    noise_scale = 0.4  # tune this
+    noisy_means = means + torch.randn_like(means) * noise_scale
+
+    dist = torch.distributions.Normal(noisy_means, stds)
+
+    # now we get angles:
+    # angles = Tensor[s_bot_num, 2]    
+        
+    # angles = mean  #<- this would be the most likley action 
+    angles = dist.sample() # this is some action based from propability
+
+    angles[:, 0] = torch.clamp(angles[:, 0], -89, 89)
+    angles[:, 1] = torch.clamp(angles[:, 1], -179, 179)    
+
+
+    #squashed = torch.tanh(raw_angle_sample)  # in [-1, 1]
+       
+    #scales = torch.tensor([179.0, 89], device=squashed.device)
+    #angles = squashed * scales  # now in [-179, 179] and [-89, 89] 
+
+    send_tensor_angles(player_input_messages, angles, s_bots)
+
+    # wait for damage response
+    time.sleep(2.0)
+
+    should_restart, restart_count = send_and_wait_for_damage_data(restart_count, player_input_messages)
+    if should_restart:
+        return
+        
+    should_restart, restart_count = send_wait_for_bullet_data(restart_count, player_input_messages)
+    if should_restart:
+        return
+    # evaluation
+    # current option:
+    # our_evaluation --teaches--> actor
+    #
+    # more fancy option:
+    # our_evaluation --teaches--> critc --teaches--> actor
+
+    #getting target bot from dictionary
+    t_bot:tf.TfBot = next(iter(t_bots.values()))
+
+    rewards = evaluate_all_decisions(angles,s_bots, t_bot)
+        
+    # Normalize rewards (optional but stabilizes training)
+    rewards_normal = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+
+    log_probs = dist.log_prob(angles).sum(dim=1)
+
+    loss = -(log_probs * rewards_normal).mean()
+
+    actor_optimizer.zero_grad() # reseting gradient
+    loss.backward()
+    actor_optimizer.step()
+
+
+    replay_buffer.update_queue(s_bots,t_bot,angles,rewards) 
+    replay_buffer.update_file_csv()
+    replay_buffer.update_file_pickle()
+    collect_tracker_data(s_bots, rewards, overall_evaluation_tracker, accuracy_tracker )
+    display_hit_data(bots)
+    display_troch_data(angles,rewards)
+    reset_damage_dealt(bots)
+        
+
+def math_magic(s_x, s_y, s_z, t_x, t_y, t_z):
+    # thats almost what we want from our neural network...
+    a = np.array([s_x, s_y, s_z])
+    b = np.array([t_x, t_y ,t_z])
     
+    dir_vec = a - b
+ 
+    x, y, z = dir_vec
+    
+    # Yaw angle (around Z-axis), angle in XY plane from X-axis
+    yaw = np.arctan2(y, x)
+    
+    # Pitch angle (around Y-axis), angle from horizontal XY plane to vector
+    hyp = np.sqrt(x**2 + y**2)
+    pitch = np.arctan2(z, hyp)
+    
+    # to degrees
+    yaw_deg = np.degrees(yaw)
+    pitch_deg = np.degrees(pitch)
+    
+    return pitch_deg, yaw_deg
+
+
+def random_loop(player_input_messages, bots, replay_buffer:ai.ReplayBuffer):
+    global restart_count, iteration
+
+    should_restart, restart_count = send_and_wait_for_positions(restart_count, player_input_messages)
+    if should_restart:
+        return       
+
+     
+    t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
+
+    #getting target bot from dictionary
+    t_bot:tf.TfBot = next(iter(t_bots.values()))
+
+    angles = torch.zeros((len(s_bots)), 2)
+    # HERE WE PUT OUR GREAT AI MODEL
+    for i, s_bot in enumerate(s_bots.values()):
+        pitch, yaw = math_magic(s_bot.pos_x,s_bot.pos_y,s_bot.pos_z, t_bot.pos_x, t_bot.pos_y, t_bot.pos_z)
+        
+        #yes, pitch and yaw are asigned wrongly in the whole code
+        
+        s_bot.pitch = float((yaw +180)+ random.uniform(-5 , 5))      
+        s_bot.yaw =  pitch  + random.uniform(-2.5, 2.5) 
+        angles[i] = torch.tensor([s_bot.pitch, s_bot.yaw])
+    lg.logger.debug("Sending angles")
+    send_angles(bots, player_input_messages) 
+    
+    # wait for damage response
+    time.sleep(1.2)
+
+    should_restart, restart_count = send_and_wait_for_damage_data(restart_count, player_input_messages)
+    if should_restart:
+        return
+
+     
+
+    replay_buffer.update_queue(s_bots,t_bot, angles)
+    replay_buffer.update_file_csv()
+    display_hit_data(bots) 
+    reset_damage_dealt(bots)
+
+    if iteration % 2 == 0:
+        player_input_messages.put("change_target_pos|") 
+        gl.send_message.set()
+        time.sleep(0.4)
+    else:
+       player_input_messages.put("change_shooter_pos|")
+       gl.send_message.set()
+       time.sleep(0.4)
+
+iteration = 0
+restart_count = 0
+def main():
+    global iteration, restart_count
     bots: dict[np.int64,tf.TfBot] = {}
     
     player_input_messages = Queue(2137)  
@@ -230,113 +394,38 @@ def main():
     
     # ai setup
     actor = ai.actor
-    actor_target = ai.actor_target
     actor_optimizer = ai.actor_optimizer
-    state = ai.sample_random_state()
-    episode_reward = 0
+
+    replay_buffer = ai.ReplayBuffer()
 
 
     overall_evaluation_tracker = []
     accuracy_tracker = []
     # loop
-    iteration = 0
-    restart_count = 0
+    #replay_buffer.load_form_file_pickle()
+    #replay_buffer.update_file_csv()
     while not gl.end_program.is_set():
         
         #start program
         gl.start_program.wait()    
 
-        # watiging for squirrel to init it self 
-        time.sleep(0.25) 
-        
         lg.logger.info("iteration: " + str(iteration))
-
-        should_restart, restart_count = send_and_wait_for_positions(restart_count, player_input_messages)
-        if should_restart:
-            continue        
         
-        normalize_data(bots)
+        #training_loop(bots,player_input_messages, actor, actor_optimizer, replay_buffer, overall_evaluation_tracker, accuracy_tracker)
 
-        t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
-        
-        # training_data = dict: int -> torch.Tensor
-        training_data = crate_training_data(t_bots,s_bots)  
+        random_loop(player_input_messages, bots, replay_buffer)
 
-        # we dont extract exact values form out neural network
-        # but we get:
-        # - mean (most likely action)
-        # - std (standard deviation of actions)
-        # we need them to create proper griadient for evaluation
-        means, stds = actor(training_data)
-
-        noise_scale = 0.4  # tune this
-        noisy_means = means + torch.randn_like(means) * noise_scale
-
-        dist = torch.distributions.Normal(noisy_means, stds)
-
-        # now we get angles:
-        # angles = Tensor[s_bot_num, 2]    
-        
-        # angles = mean  #<- this would be the most likley action 
-        angles = dist.sample() # this is some action based from propability
-
-        angles[:, 0] = torch.clamp(angles[:, 0], -89, 89)
-        angles[:, 1] = torch.clamp(angles[:, 1], -179, 179)    
-
-
-        #squashed = torch.tanh(raw_angle_sample)  # in [-1, 1]
-       
-        #scales = torch.tensor([179.0, 89], device=squashed.device)
-        #angles = squashed * scales  # now in [-179, 179] and [-89, 89] 
-
-        send_tensor_angles(player_input_messages, angles, s_bots)
-
-        # wait for damage response
-        time.sleep(2.0)
-
-        should_restart, restart_count = send_and_wait_for_damage_data(restart_count, player_input_messages)
-        if should_restart:
-            continue
-        
-        should_restart, restart_count = send_wait_for_bullet_data(restart_count, player_input_messages)
-        if should_restart:
-            continue
-        # evaluation
-        # current option:
-        # our_evaluation --teaches--> actor
-        #
-        # more fancy option:
-        # our_evaluation --teaches--> critc --teaches--> actor
-
-        #getting target bot from dictionary
-        t_bot:tf.TfBot = next(iter(t_bots.values()))
-
-        rewards = evaluate_all_decisions(angles,s_bots, t_bot)
-        
-        # Normalize rewards (optional but stabilizes training)
-        rewards_normal = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
-
-        log_probs = dist.log_prob(angles).sum(dim=1)
-
-        loss = -(log_probs * rewards_normal).mean()
-
-        actor_optimizer.zero_grad() # reseting gradient
-        loss.backward()
-        actor_optimizer.step()
-
-        collect_tracker_data(s_bots, rewards, overall_evaluation_tracker, accuracy_tracker )
-        display_hit_data(bots)
-        display_troch_data(angles,rewards)
-        reset_damage_dealt(bots)
-        
         iteration += 1
-        #loop ends ig
-        
-    with open("Accuracy.txt", "w") as file:
+         
+
+ 
+    with open("statistics_and_data/Accuracy.txt", "w") as file:
         file.write(str(accuracy_tracker))
    
-    with open("Rewards_sum.txt", "w") as file:
+    with open("statistics_and_data/Rewards_sum.txt", "w") as file:
         file.write(str(overall_evaluation_tracker))
+
+
     tf_listener.join()
     user_listener.join()
 
