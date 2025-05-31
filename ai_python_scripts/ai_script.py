@@ -198,12 +198,12 @@ def evaluate_all_decisions(angles: torch.Tensor, s_bots:dict[np.int64,tf.TfBot],
     result = torch.zeros((angles.shape[0]))
     for i,s_bot in enumerate(s_bots.values()):
         #dont shoot into celing
-        if angles[i][0] > 80.0:
-            result[i] -= torch.tensor((angles[i][0]  - 80.0) * -10.0 )
+        if angles[i][0] > 70.0:
+            result[i] -= torch.tensor(abs((angles[i][0]  - 40.0)) * 35.0 )
         
         #dont shoot into ground
-        if angles[i][0] < -80:
-            result[i] -= torch.tensor((angles[i][0] + 80.0) * 10.0)
+        if angles[i][0] < -70:
+            result[i] -= torch.tensor(abs((angles[i][0] + 40.0)) * 35.0)
         
         result[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2 + s_bot.damage_dealt)
 
