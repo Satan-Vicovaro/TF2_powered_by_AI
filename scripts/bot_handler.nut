@@ -3,7 +3,6 @@
 ::TF_TEAM_BLUE <- 3
 ::MIN_RADIUS <- 250
 ::MAX_RADIUS <- 1000
-::BOT_TYPE <- "soldier"
 
 IncludeScript("projectile_handler")
 
@@ -48,7 +47,6 @@ class::bot_handler {
             weapon.PrimaryAttack()
             weapon.SetClip1(weapon.GetMaxClip1())
         }
-        start_tracking(BOT_TYPE)
         printl("Bots attacked")
     }
 

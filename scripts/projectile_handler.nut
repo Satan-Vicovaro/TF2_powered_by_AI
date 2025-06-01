@@ -1,80 +1,19 @@
 // Globals
+::tracker_logic <- null;
 ::FLT_MAX <- 3.402823466e+38;
 ::distances <- {};
 ::min_positions <- {};
 ::min_positions_diffs <- {};
-::TRACKING_RATE <- 0.001
+::track_iterations <- 0;
+::TRACKING_RATE <- 0.01; // seconds between updates
+::TF_TEAM_BLUE <- 3
+::projectile_destroyed <- {};  // ownerIndex → bool
+::projectile_classes <- ["tf_projectile_rocket", "tf_projectile_pipe"];
 
+const stress_testing = true;
 const debug = true;
 
 IncludeScript("file_scripts");
-
-local data_modes = {
-    POS_ABS = "pos_abs",
-    DISTANCE = "distance",
-    POS_DIFF = "pos_diff"
-};
-
-local information_mode = data_modes.DISTANCE;
-
-function ClearStringFromPool(string)
-{
-	local dummy = Entities.CreateByClassname("info_target")
-	dummy.KeyValueFromString("targetname", string)
-	NetProps.SetPropBool(dummy, "m_bForcePurgeFixedupStrings", true)
-	dummy.Destroy()
-}
-
-function EntFireCodeSafe(entity, code, delay = 0.0, activator = null, caller = null)
-{
-	EntFireByHandle(entity, "RunScriptCode", code, delay, activator, caller)
-	ClearStringFromPool(code)
-}
-
-
-/*
-bool AcceptInput(string input, string param, handle activator, handle caller)
-*/
-function FireCodeTest(input, param, activator, caller)
-{
-    return AcceptInput(input, param, activator, caller);
-}
-
-function start_tracking(bot_type)
-{
-    ::distances <- {};
-    ::min_positions <- {};
-    ::min_positions_diffs <- {};
-
-    local ent = null;
-    local projectile_class = null;
-
-    if (bot_type == "soldier") {
-        projectile_class = "tf_projectile_rocket";
-    } else if (bot_type == "demoman") {
-        projectile_class = "tf_projectile_pipe";
-    } else {
-        printl("[start_tracking] Unknown bot type: " + bot_type);
-        return;
-    }
-
-    local pos = null;
-    local target_bot_position = null;
-    local pos_diff = null;
-    local target_ent = null;
-
-    while (ent = Entities.FindByClassname(ent, projectile_class))
-    {
-        if (ent != null)
-        {
-            local owner = ent.GetOwner();
-            if (owner != null)
-            {
-                EntFireCodeSafe(ent, "track_projectile()", 0.1);
-            }
-        }
-    }
-}
 
 function closest_point_on_bbox(pos, ent)
 {
@@ -111,104 +50,11 @@ function get_target_bot_entity()
     while (ent = Entities.FindByClassname(ent, "player"))
     {
         if (ent == GetListenServerHost()) continue;
-        if (ent.GetTeam() == TF_TEAM_BLUE) {
+        if (ent.GetTeam() == ::TF_TEAM_BLUE) {
             return ent;
         }
     }
     return null;
-}
-
-function print_map(map)
-{
-   foreach(k,v in map)
-   {
-        printl(k + " : " + v);
-   }
-}
-
-function track_projectile()
-{
-    if(debug) printl("tracking projectile")
-    local projectile = self; // 'self' is the entity calling this function
-
-    if (projectile == null)
-    {
-        printl("Error: projectile (self) is null");
-        return;
-    }
-
-    try {
-        if(projectile == null) {printl("Projectile null")}
-        local pos = null;
-        local owner = null;
-        local target_ent = null;
-
-        if(debug) printl("inside try")
-        try {
-            pos = projectile.GetOrigin();
-        } catch(e) {
-            printl("pos error " + e);
-        }
-
-        try {
-            owner = projectile.GetOwner();
-        } catch(e) {
-            printl("owner error1 " + e);
-        }
-
-        try {
-            target_ent = get_target_bot_entity();
-        } catch(e) {
-            printl("target error1 " + e);
-        }
-
-        if(debug) printl("afetr tries")
-
-        if(target_ent == null || typeof target_ent != "instance")
-        {
-            printl("target error2 ");
-        }
-
-        local target_bot_position = closest_point_on_bbox(pos, target_ent);
-        if(debug) printl("got target's position")
-
-        if (owner != null)
-        {
-            local ownerIndex = owner.entindex();
-            local prevDistance = null;
-            if(ownerIndex in ::distances)
-                prevDistance = ::distances[ownerIndex];
-            local currDistance = calculate_distance(pos, target_bot_position);
-            local pos_diff = target_bot_position - pos;
-
-            if(debug) printl("all data gathered")
-
-            if (prevDistance == null || currDistance <= prevDistance)
-            {
-                ::distances[ownerIndex] <- currDistance;
-                ::min_positions[ownerIndex] <- pos;
-                ::min_positions_diffs[ownerIndex] <- pos_diff;
-                if(debug) printl("found new minimum")
-            }
-            else {
-                // Finishing calculations if the distance doesn't decrease anymore
-                return;
-            }
-
-            // Debug output
-            if(debug) printl("Projectile at " + pos + " |  Target at " + target_bot_position + " | CurrDist: " + currDistance + " | MinDist: " + ::distances[ownerIndex]);
-
-            // Continue updating
-            EntFireCodeSafe(projectile, "track_projectile()", TRACKING_RATE);
-        }
-        else
-        {
-            printl("owner error2")
-        }
-
-    } catch (e) {
-        if(debug) printl("Error in track_projectile: " + e);
-    }
 }
 
 function vector_to_string(vec)
@@ -218,69 +64,178 @@ function vector_to_string(vec)
 
 function send_projectile_info()
 {
-    if(debug) printl("sending info")
+    if(debug) printl("sending info");
 
-    local projectile_info = "";
-    local source_map = null;
-
-    switch(information_mode)
-    {
-        case data_modes.POS_ABS:
-            source_map = ::min_positions
-            break;
-        case data_modes.POS_DIFF:
-            source_map = ::min_positions_diffs
-            break;
-        case data_modes.DISTANCE:
-            source_map = ::distances
-            break;
-        default :
-            printl("wrong information mode")
-            return
-    }
+    local projectile_info = ""
+    local source_map = ::min_positions_diffs
 
     if(source_map.len() == 0)
     {
-        projectile_info = "b none";
+        projectile_info = "b none\n";
     }
     else
     {
-        if(debug) printl("send info else")
-
-        local data_type = null
-        foreach(key, val in source_map)
+        foreach(ownerIndex, data in source_map)
         {
-            data_type = typeof val;
-            if(debug) printl("data_type: " + data_type)
-            break;
+            projectile_info += format("b %d %s\n", ownerIndex, vector_to_string(data));
         }
-
-        if(data_type == "Vector")
-        {
-
-            foreach(ownerIndex, data in source_map)
-            {
-                if(debug) printl("appending line");
-                {
-                    projectile_info += format("b %d %s\n", ownerIndex, vector_to_string(data));
-                    printl("type of double: " + typeof data);
-                }
-            }
-        }
-        else if(data_type == "float")
-        {
-
-            foreach(ownerIndex, data in source_map)
-            {
-                if(debug) printl("appending line");
-                {
-                    projectile_info += format("b %d %f\n", ownerIndex, data);
-                    printl("type of double: " + typeof data);
-                }
-            }
-        }
-
     }
 
     append_to_file("squirrel_out", projectile_info);
+
+    // Cleanup after saving
+    ::distances.clear();
+    ::min_positions.clear();
+    ::min_positions_diffs.clear();
+    ::projectile_destroyed.clear();
+    if (debug) printl("Tracking data cleared after write");
 }
+
+// === TRACKING LOGIC ===
+
+function start_tracking()
+{
+    ::distances.clear();
+    ::min_positions.clear();
+    ::min_positions_diffs.clear();
+
+    if ("tracker_logic" in getroottable() && ::tracker_logic != null && ::tracker_logic.IsValid())
+    {
+        NetProps.SetPropString(::tracker_logic, "m_iszScriptThinkFunction", "");
+        ::tracker_logic.Destroy();
+        ::tracker_logic <- null;
+    }
+
+    ::tracker_logic = Entities.CreateByClassname("logic_script");
+    ::tracker_logic.ValidateScriptScope();
+    ::tracker_logic.KeyValueFromString("targetname", "projectile_tracker");
+
+    local scope = ::tracker_logic.GetScriptScope();
+    scope["TrackThink"] <- TrackThink;
+
+    AddThinkToEnt(::tracker_logic, "TrackThink");
+}
+
+function mark_projectile_destroyed(ownerIndex)
+{
+    ::projectile_destroyed[ownerIndex] <- true;
+    if (debug) printl("Marked projectile destroyed for owner " + ownerIndex);
+}
+
+function stop_tracking()
+{
+    if ("tracker_logic" in getroottable() && ::tracker_logic != null && ::tracker_logic.IsValid())
+    {
+        NetProps.SetPropString(::tracker_logic, "m_iszScriptThinkFunction", "");
+        ::tracker_logic.Destroy();
+        ::tracker_logic <- null;
+        printl("Tracking stopped.");
+        ::track_iterations <- 0;
+    }
+    else
+    {
+        printl("No active tracker to stop.");
+    }
+}
+
+
+// The thinker function, runs every TRACKING_RATE seconds
+function TrackThink()
+{
+    ::track_iterations++;
+    local target_ent = get_target_bot_entity();
+    if (!target_ent) return ::TRACKING_RATE;
+    foreach (classname in ::projectile_classes)
+    {
+        local ent = null;
+        
+        while (ent = Entities.FindByClassname(ent, classname))
+        {
+            if (!ent || !ent.IsValid()) continue;
+
+            local owner = null;
+            try {owner = ent.GetOwner(); } catch(e) {printl("owner error" + e)}
+
+            if (owner == null || !owner.IsValid())
+            {
+                if (debug) printl("Projectile has no valid owner yet, skipping.");
+                continue;
+            }
+
+            local ownerIndex = owner.entindex();
+            local pos = ent.GetOrigin();
+            local target_pos = closest_point_on_bbox(pos, target_ent);
+            local currDistance = calculate_distance(pos, target_pos);
+            local pos_diff = target_pos - pos;
+            
+            // Reset if projectile was destroyed and new projectile detected
+            if ((ownerIndex in ::projectile_destroyed) && ::projectile_destroyed[ownerIndex] == true)
+            {
+                ::distances[ownerIndex] <- currDistance;
+                ::min_positions[ownerIndex] <- pos;
+                ::min_positions_diffs[ownerIndex] <- pos_diff;
+                ::projectile_destroyed[ownerIndex] <- false;
+
+                if (debug) printl("Resetting data for owner " + ownerIndex + " due to destroyed projectile.");
+            }
+            // Otherwise update if smaller distance or untracked yet
+            else if (!(ownerIndex in ::distances) || currDistance <= ::distances[ownerIndex])
+            {
+                ::distances[ownerIndex] <- currDistance;
+                ::min_positions[ownerIndex] <- pos;
+                ::min_positions_diffs[ownerIndex] <- pos_diff;
+            }
+
+            if(debug) {
+                printl("[Tracking] Owner " + ownerIndex + " | Target: " + target_pos + " | Projectile: " + pos + " | Dist: " + currDistance + " | Min dist: " + ::distances[ownerIndex]);
+            }
+            
+        }
+    }
+
+    if(stress_testing) {
+            if (::track_iterations % 1000 == 0) {
+                log_tracking_table_sizes();             
+            }
+        }
+
+    return ::TRACKING_RATE;
+}
+
+function log_tracking_table_sizes()
+{
+    local sizes = "";
+    sizes += format("distances: %d\n", ::distances.len());
+    sizes += format("min_positions: %d\n", ::min_positions.len());
+    sizes += format("min_positions_diffs: %d\n", ::min_positions_diffs.len());
+    sizes += format("projectile_destroyed: %d\n", ::projectile_destroyed.len());
+
+    append_to_file("sizes.txt", "[Table Sizes @ " + ::track_iterations + "]\n" + sizes);
+}
+
+local EventsID = UniqueString()
+getroottable()[EventsID] <-
+{
+	OnScriptHook_KillHooks = function(_) {
+        printl("Deleting hooks for projectile events")
+        delete getroottable()[EventsID]
+    }
+
+	OnGameEvent_projectile_direct_hit = function(params) {
+        local ownerIndex = params.attacker;
+        if (debug) printl("Projectile direct hit: attacker = " + ownerIndex);
+
+        mark_projectile_destroyed(ownerIndex);
+    }
+
+	OnGameEvent_projectile_removed = function(params) {
+        local ownerIndex = params.attacker;
+        if (debug) printl("Projectile removed: attacker = " + ownerIndex);
+
+        mark_projectile_destroyed(ownerIndex);
+    }
+}
+
+local EventsTable = getroottable()[EventsID]
+foreach (name, callback in EventsTable) EventsTable[name] = callback.bindenv(this)
+__CollectGameEventCallbacks(EventsTable)
