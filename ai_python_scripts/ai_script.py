@@ -214,11 +214,11 @@ def evaluate_all_decisions(angles: torch.Tensor, s_bots:dict[np.int64,tf.TfBot],
     for i,s_bot in enumerate(s_bots.values()):
         #dont shoot into celing
         if angles[i][1] > 70.0:
-            result[i] -= torch.tensor(abs((angles[i][0]  - 40.0)) * 35.0 )
+            result[i] -= torch.tensor(abs((angles[i][1]  - 40.0)) * 35.0 )
         
         #dont shoot into ground
         if angles[i][1] < -70:
-            result[i] -= torch.tensor(abs((angles[i][0] + 40.0)) * 35.0)
+            result[i] -= torch.tensor(abs((angles[i][1] + 40.0)) * 35.0)
         
         result[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2 + s_bot.damage_dealt)
 
@@ -365,7 +365,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     display_troch_data(angles,rewards)
     reset_damage_dealt(bots)
     
-    if iteration % 500 == 0:
+    if iteration % 100 == 0:
         player_input_messages.put("change_target_pos|") 
         gl.send_message.set()
         time.sleep(0.2)
@@ -413,14 +413,14 @@ def generate_data_loop(player_input_messages, bots, replay_buffer:ai.ReplayBuffe
         
         #yes, pitch and yaw are asigned wrongly in the whole code
         
-        s_bot.pitch = float((yaw + 180)+ random.uniform(-5 , 5))      
-        s_bot.yaw =  pitch  + random.uniform(-2.5, 2.5) 
+        s_bot.pitch = float((yaw + 180)+ random.uniform(-2.5 , 2.5))      
+        s_bot.yaw =  pitch  + random.uniform(-1.5, 2.5) 
         angles[i] = torch.tensor([s_bot.pitch, s_bot.yaw])
     lg.logger.debug("Sending angles")
     send_angles(bots, player_input_messages) 
     
     # wait for damage response
-    time.sleep(1.2)
+    time.sleep(2.0)
 
     should_restart, restart_count = send_and_wait_for_damage_data(restart_count, player_input_messages)
     if should_restart:
@@ -466,9 +466,9 @@ def main():
 
     sections = 8 
     section_num = 0
-    sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
+#    sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
 
-    loop_mode = [(LoopMode.IN_GAME_TRAINING, 5000)]
+    loop_mode = [(LoopMode.FILE_TRAINING,20000), (LoopMode.IN_GAME_TRAINING, 2000) ]
 
     loop_mode.reverse()
 
@@ -500,7 +500,7 @@ def main():
             case LoopMode.IN_GAME_TRAINING:
                 in_game_training_loop(bots,player_input_messages, actor, actor_optimizer, replay_buffer, overall_evaluation_tracker, accuracy_tracker)
             case LoopMode.FILE_TRAINING:
-                from_file_training_loop(bots,actor,actor_optimizer,sorted_r_buffers[section_num],overall_evaluation_tracker,accuracy_tracker)
+                from_file_training_loop(bots,actor,actor_optimizer,file_replay_buffer,overall_evaluation_tracker,accuracy_tracker)
             case LoopMode.GENERATE_DATA: 
                 generate_data_loop(player_input_messages, bots, replay_buffer)
             case _ :
