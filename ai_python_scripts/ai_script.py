@@ -468,7 +468,7 @@ def main():
     section_num = 0
 #    sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
 
-    loop_mode = [(LoopMode.FILE_TRAINING,20000), (LoopMode.IN_GAME_TRAINING, 2000) ]
+    loop_mode = [(LoopMode.IN_GAME_TRAINING, 2000) ]
 
     loop_mode.reverse()
 

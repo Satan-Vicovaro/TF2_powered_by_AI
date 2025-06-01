@@ -77,13 +77,13 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
             lines[-1] = lines[-1][:-1]
         
         #if damage was not dealed
-        if lines[0] == "d none" :
+        if str.strip(lines[0]) == "d none" :
             gl.received_damage_data.set()
             in_file.truncate(0) # clearing contents
             return
         
         #if no distances provided
-        if lines[0] == "b none" :
+        if str.strip(lines[0]) == "b none" :
             gl.received_bullet_data.set()
             in_file.truncate(0) # clearing contents
             return
@@ -117,9 +117,14 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
                         bots[bot_id] = tf.TfBot(pos_x = pos_x, pos_y = pos_y,pos_z = pos_z, bot_type = bot_type)
 
                 case"d": 
+                    # we get:
+                    # bot_id x y z 
                     damage_data = True
                     bot_id = np.int64(parts[1])
-                    damage = np.float64(parts[2])
+                    x = np.float32(parts[2])
+                    y = np.float32(parts[3])
+                    z = np.float32(parts[4])
+                    damage = np.linalg.norm(np.array[x,y,z])
                     if not bot_id in bots:
                         lg.logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")                    
                         continue
