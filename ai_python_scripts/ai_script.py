@@ -245,7 +245,11 @@ def collect_data_file_training(generated_angles:torch.Tensor, proper_angles:torc
 
 def evaluate_decision_with_angles(generated_angles: torch.Tensor, proper_angles:torch.Tensor):
     #differance in angles as a punishmnet
-    return - torch.abs(generated_angles - proper_angles).sum(dim=1)
+    base_penalty = -torch.abs((((generated_angles - proper_angles)*0.1)**2)).sum(dim=1)
+
+    celing_fire = torch.abs(generated_angles) > 0
+    extra_penalty = celing_fire.any(dim=1).float() * 10.0
+    return -(base_penalty - extra_penalty)
 
 def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor_optimizer:ai.optim, file_replay_buffer:ai.ReplayBuffer,
                              overall_evaluation_tracker, accuracy_tracker):
@@ -257,7 +261,7 @@ def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor
 
     means,stds = actor(training_data)
 
-    noise_scale = 0.4  # tune this
+    noise_scale = 0.1  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
 
     dist = torch.distributions.Normal(noisy_means, stds)
@@ -271,7 +275,7 @@ def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor
 
     log_probs = dist.log_prob(generated_angles).sum(dim=1)
 
-    loss = -(log_probs * rewards).mean()
+    loss = -(log_probs * rewards_normal).mean()
 
     actor_optimizer.zero_grad() # reseting gradient
     loss.backward()
@@ -354,12 +358,17 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     actor_optimizer.step()
 
 
-    replay_buffer.update_queue(s_bots, t_bot, angles) 
-    replay_buffer.update_file_csv()
+    #replay_buffer.update_queue(s_bots, t_bot, angles) 
+    #replay_buffer.update_file_csv()
     collect_tracker_data(s_bots, rewards, overall_evaluation_tracker, accuracy_tracker )
     display_hit_data(bots)
     display_troch_data(angles,rewards)
     reset_damage_dealt(bots)
+    
+    if iteration % 500 == 0:
+        player_input_messages.put("change_target_pos|") 
+        gl.send_message.set()
+        time.sleep(0.2)
         
 
 def math_magic(s_x, s_y, s_z, t_x, t_y, t_z):
@@ -399,7 +408,6 @@ def generate_data_loop(player_input_messages, bots, replay_buffer:ai.ReplayBuffe
     t_bot:tf.TfBot = next(iter(t_bots.values()))
 
     angles = torch.zeros((len(s_bots)), 2)
-    # HERE WE PUT OUR GREAT AI MODEL
     for i, s_bot in enumerate(s_bots.values()):
         pitch, yaw = math_magic(s_bot.pos_x,s_bot.pos_y,s_bot.pos_z, t_bot.pos_x, t_bot.pos_y, t_bot.pos_z)
         
@@ -456,13 +464,18 @@ def main():
     file_replay_buffer = ai.ReplayBuffer()
     file_replay_buffer.load_from_file_csv()
 
-    loop_mode = [(LoopMode.IN_GAME_TRAINING,20000)]
+    sections = 8 
+    section_num = 0
+    sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
+
+    loop_mode = [(LoopMode.IN_GAME_TRAINING, 5000)]
 
     loop_mode.reverse()
 
     mode = LoopMode.IN_GAME_TRAINING
     iterations_to_make = 0
     without_mode = True
+    
     
     overall_evaluation_tracker = []
     accuracy_tracker = []
@@ -487,7 +500,7 @@ def main():
             case LoopMode.IN_GAME_TRAINING:
                 in_game_training_loop(bots,player_input_messages, actor, actor_optimizer, replay_buffer, overall_evaluation_tracker, accuracy_tracker)
             case LoopMode.FILE_TRAINING:
-                from_file_training_loop(bots,actor,actor_optimizer,file_replay_buffer,overall_evaluation_tracker,accuracy_tracker)
+                from_file_training_loop(bots,actor,actor_optimizer,sorted_r_buffers[section_num],overall_evaluation_tracker,accuracy_tracker)
             case LoopMode.GENERATE_DATA: 
                 generate_data_loop(player_input_messages, bots, replay_buffer)
             case _ :
@@ -508,7 +521,7 @@ def main():
     with open("statistics_and_data/Rewards_sum.txt", "w") as file:
         file.write(str(overall_evaluation_tracker))
 
-
+    
     os._exit(0)
     tf_listener.join()
     user_listener.join()

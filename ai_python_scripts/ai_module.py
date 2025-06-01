@@ -13,6 +13,7 @@ import pickle
 import csv
 import os
 import copy
+import math
 
 #Hyperparameters
 GAMMA = 0.99
@@ -20,7 +21,7 @@ TAU = 0.005
 ACTOR_LR = 1e-2 #actor learning rate
 CRITIC_LR = 1e-2 #critic learning rate
 BUFFER_SIZE = int(1e6) # buffer for ReplayBuffer
-BATCH_SIZE = 2
+BATCH_SIZE = 64
 
 
 
@@ -165,7 +166,41 @@ class ReplayBuffer: #might not me necessary but AI is forgetfull
         for i , s_bot in enumerate(s_bots.values()):
             if s_bot.damage_dealt != 0:
                 self.add((torch.tensor([s_bot.pos_x, s_bot.pos_y, s_bot.pos_z, t_bot.pos_x, t_bot.pos_y, t_bot.pos_z]),angles[i]))
-    
+
+    def split_data_into_sectors(self, num_sectors = 8, center=(0.0, 0.0)):
+        """
+        Splits data into angular sectors based on angle from a center point (cx, cy)
+        """
+        states, actions = zip(*self.buffer) 
+        data = torch.stack(states)
+
+        x1 = data[:,0]
+        y1 = data[:,1]
+
+        cx, cy = center
+        
+        # Translate to new origin
+        dx = x1 - cx
+        dy = y1 - cy
+        
+        # Compute angle from origin (in radians, range [-pi, pi])
+        angles = torch.atan2(dy,dx)
+
+        # Normalize angle to [0, 2pi]
+        angles = (angles + 2 * math.pi) % (2 * math.pi)
+
+        # Sector size in radians
+        sector_size = 2 * math.pi / num_sectors
+
+        # Assign each point to a sector [0, num_sectors - 1]
+        sector_ids = (angles / sector_size).floor().long()
+  
+        # Create buckets
+        buckets = [ReplayBuffer() for _ in range(num_sectors)]
+        for i, sector in enumerate(sector_ids):
+            buckets[sector].add((states[i],actions[i]))
+
+        return buckets
 
     
 # Soft Update
@@ -209,3 +244,5 @@ critic_optimizer = optim.Adam(critic.parameters(), lr = CRITIC_LR)
 
 replay_buffer = ReplayBuffer()
 
+ 
+ 
