@@ -108,7 +108,7 @@ class :: python_listener {
 			listener_bot.Kill()
 			FireScriptHook("Kill_BotHandler", null)
 			FireScriptHook("KillTargetBot", null)
-			FireScriptHook("KillHooks", null)
+			FireScriptHook("KillProjectileHooks", null)
 			return;
 		}
 
