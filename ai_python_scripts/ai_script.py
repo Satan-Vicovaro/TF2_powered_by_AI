@@ -52,11 +52,11 @@ def collect_tracker_data(s_bots:dict[np.int64, tf.TfBot], rewards: torch.Tensor,
     accuracy = float(hits/len(s_bots)) 
     reward_sum = sum(rewards) 
 
-    lg.logger.info("Sum of rewards: " + str(reward_sum))
+    lg.logger.info("Sum of rewards: " + str(float(reward_sum)))
     lg.logger.info("Accuracy: " + str(accuracy))
     
     overall_evaluation_tracker.append(int(reward_sum))
-    accuracy_tracker.append(accuracy)
+    accuracy_tracker.append(str(accuracy))
 
 
 def send_wait_for_bullet_data(restart_count, player_input_messages:Queue):
@@ -468,7 +468,7 @@ def main():
     section_num = 0
 #    sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
 
-    loop_mode = [(LoopMode.IN_GAME_TRAINING, 2000) ]
+    loop_mode = [(LoopMode.GENERATE_DATA, 2000) ]
 
     loop_mode.reverse()
 

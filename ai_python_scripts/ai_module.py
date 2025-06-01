@@ -59,7 +59,9 @@ class Actor(nn.Module):
         # scale and offset means
         device = raw_mean.device
         scales = torch.tensor([200.0, 89.0], device=device)
-        offsets = torch.tensor([1.0, 0.0], device=device)  # shift for [0,360), [-89,89]
+        
+        # shift for [0,400) (the excesive angle does produce error, its properly converted in this case), [-89,89]
+        offsets = torch.tensor([1.0, 0.0], device=device) 
 
         mean = (raw_mean + offsets) * scales
 

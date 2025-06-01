@@ -14,7 +14,7 @@ const debug = false
 const DMG_BEFORE_REPOSITION = 100 // TODO specify how much damage for bot to reposition
 const SPAWN_RADIUS = 300
 const SPAWN_MIN_HEIGHT = 50.0
-const SPAWN_MAX_HEIGHT = 50.0
+const SPAWN_MAX_HEIGHT = 1000.0
 const ORIGIN_X = 0
 const ORIGIN_Y = 0
 const MAX_HEALTH = 10000
@@ -86,8 +86,13 @@ class ::TargetBot
     // Moves bot to a random position on a circle, away from the training bots
     function random_move_alt()
     {
-        local radius = rand() % 350 + 700
-        local height = RandomFloat(SPAWN_MIN_HEIGHT, SPAWN_MAX_HEIGHT)
+	    local radius = rand() % 350 + 700
+
+    	local random_vec = Vector()
+	    VS.RandomVectorInUnitSphere(random_vec)
+	    local height = fabs(random_vec.x) // used RandomVector just to generate random float
+        height = (height * (SPAWN_MAX_HEIGHT - SPAWN_MIN_HEIGHT)) + SPAWN_MIN_HEIGHT
+
         local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + height)
 
 
@@ -112,10 +117,13 @@ class ::TargetBot
 	pos.x = pos.x + radius * cos(this.cur_ang)
 	pos.y = pos.y + radius * sin(this.cur_ang)
 
+    local random_vec = Vector()
+	VS.RandomVectorInUnitSphere(random_vec);
+	local height = random_vec.z // used RandomVector just to generate random float
     if (pos.z > 60 ) {
-        pos.z = pos.z + RandomFloat(-50, 50.0)
+	    pos.z = pos.z + height * 50
     }else {
-        pos.z = pos.z + RandomFloat(0, 50.0)
+        pos.z = pos.z + fabs(height)
     }
         move_to_position(pos)
     }
