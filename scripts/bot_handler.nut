@@ -48,7 +48,6 @@ class::bot_handler {
             weapon.PrimaryAttack()
             weapon.SetClip1(weapon.GetMaxClip1())
         }
-        start_tracking(BOT_TYPE)
         printl("Bots attacked")
     }
 
