@@ -12,7 +12,9 @@ const debug = false
 
 // Bot spawn constants
 const DMG_BEFORE_REPOSITION = 100 // TODO specify how much damage for bot to reposition
-const SPAWN_RADIUS = 200
+const SPAWN_RADIUS = 300
+const SPAWN_MIN_HEIGHT = 50.0
+const SPAWN_MAX_HEIGHT = 50.0
 const ORIGIN_X = 0
 const ORIGIN_Y = 0
 const MAX_HEALTH = 10000
@@ -71,7 +73,10 @@ class ::TargetBot
 
         local dir = Vector();
         VS.RandomVectorInUnitSphere(dir);
+
         dir *= radius;
+
+        dir.z = RandomFloat(SPAWN_MIN_HEIGHT, SPAWN_MAX_HEIGHT)
 
         local targetPos = origin + dir;
 
@@ -81,8 +86,10 @@ class ::TargetBot
     // Moves bot to a random position on a circle, away from the training bots
     function random_move_alt()
     {
-        local radius = rand() % 250 + 1000
-        local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS)
+        local radius = rand() % 350 + 700
+        local height = RandomFloat(SPAWN_MIN_HEIGHT, SPAWN_MAX_HEIGHT)
+        local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + height)
+
 
         local angle = rand() % 360 * PI / 180.0
         this.cur_ang = angle
@@ -96,15 +103,20 @@ class ::TargetBot
     // Slightly changes the position of a bot on a circle
     function small_move()
     {
-        local radius = rand() % 250 + 1000
-        local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS)
+	local radius = rand() % 350 + 700
+	local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS)
 
-        local angle = (rand() % 20 - 10) * PI / 180.0
-        this.cur_ang = this.cur_ang + angle
+	local angle = (rand() % 20 - 10) * PI / 180.0
+	this.cur_ang = this.cur_ang + angle
 
-        pos.x = pos.x + radius * cos(this.cur_ang)
-        pos.y = pos.y + radius * sin(this.cur_ang)
+	pos.x = pos.x + radius * cos(this.cur_ang)
+	pos.y = pos.y + radius * sin(this.cur_ang)
 
+    if (pos.z > 60 ) {
+        pos.z = pos.z + RandomFloat(-50, 50.0)
+    }else {
+        pos.z = pos.z + RandomFloat(0, 50.0)
+    }
         move_to_position(pos)
     }
 }

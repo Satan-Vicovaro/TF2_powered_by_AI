@@ -1,8 +1,8 @@
 // https://developer.valvesoftware.com/wiki/Team_Fortress_2/Scripting/Script_Functions/Constants
 ::TF_TEAM_RED <- 2
 ::TF_TEAM_BLUE <- 3
-::MIN_RADIUS <- 250
-::MAX_RADIUS <- 750
+::MIN_RADIUS <- 50
+::MAX_RADIUS <- 300
 ::BOT_TYPE <- "soldier"
 
 IncludeScript("projectile_handler")
