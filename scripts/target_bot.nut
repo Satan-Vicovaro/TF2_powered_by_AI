@@ -28,6 +28,7 @@ class ::TargetBot
     reposition_damage = DMG_BEFORE_REPOSITION
     auto_reposition = false
     damage_register = ""
+    cur_ang = null
 
     constructor()
     {
@@ -51,7 +52,8 @@ class ::TargetBot
         this.bot.AddBotAttribute(1024)
 
         // initial state
-        this.move_to_random_position()
+        //this.move_to_random_position()
+        random_move_alt()
     }
 
     // moves bot to destination Vector
@@ -74,6 +76,36 @@ class ::TargetBot
         local targetPos = origin + dir;
 
         move_to_position(targetPos);
+    }
+
+    // Moves bot to a random position on a circle, away from the training bots
+    function random_move_alt()
+    {
+        local radius = rand() % 250 + 1000
+        local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS)
+
+        local angle = rand() % 360 * PI / 180.0
+        this.cur_ang = angle
+
+        pos.x = pos.x + radius * cos(angle)
+        pos.y = pos.y + radius * sin(angle)
+
+        move_to_position(pos)
+    }
+
+    // Slightly changes the position of a bot on a circle
+    function small_move()
+    {
+        local radius = rand() % 250 + 1000
+        local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS)
+
+        local angle = (rand() % 20 - 10) * PI / 180.0
+        this.cur_ang = this.cur_ang + angle
+
+        pos.x = pos.x + radius * cos(this.cur_ang)
+        pos.y = pos.y + radius * sin(this.cur_ang)
+
+        move_to_position(pos)
     }
 }
 
@@ -146,7 +178,11 @@ getroottable()[EventsID] <-
 
     // Reposition hook
     OnScriptHook_Reposition = function(_) {
-        spawnedBot.move_to_random_position()
+        spawnedBot.random_move_alt()
+    }
+
+    OnScriptHook_SmallMove = function(_) {
+        spawnedBot.small_move()
     }
 
 	// Disabling hooks
@@ -159,12 +195,12 @@ getroottable()[EventsID] <-
     OnScriptHook_SendDamage = function(_) {
     if(debug) printl("SendDamage hook")
 
-	if(spawnedBot.damage_register == "") 
+	if(spawnedBot.damage_register == "")
     {
 		// no damage case
 		append_to_file("squirrel_out", "d none")
 	}
-	else 
+	else
     {
 		// damage done
 		append_to_file("squirrel_out", spawnedBot.damage_register)

@@ -5,3 +5,4 @@ ai_python_scripts/__pycache__/*
 Overall_eval.txt
 Accuracy.txt
 Rewards_sum.txt
+venv/*

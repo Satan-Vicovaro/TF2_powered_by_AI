@@ -2,7 +2,7 @@
 ::TF_TEAM_RED <- 2
 ::TF_TEAM_BLUE <- 3
 ::MIN_RADIUS <- 250
-::MAX_RADIUS <- 1000
+::MAX_RADIUS <- 750
 ::BOT_TYPE <- "soldier"
 
 IncludeScript("projectile_handler")
@@ -54,9 +54,9 @@ class::bot_handler {
 
     // Places bots evenly around a circle of a given center point and radius
     //
-    function TeleportBots(center_pos) {
+    function TeleportBots(center_pos, min_r, max_r) {
         foreach(i, ent in bot_list) {
-            local radius = rand() % (MAX_RADIUS - MIN_RADIUS) + MIN_RADIUS
+            local radius = rand() % (max_r - min_r) + min_r
             local angle = 2 * PI * i / bot_list.len()
             local bot_pos = ent.GetLocalOrigin()
 
@@ -100,7 +100,7 @@ class::bot_handler {
 
     function Setup() {
         BotIgnoreEnemy()
-        TeleportBots(Vector(0,0,0))
+        TeleportBots(Vector(0,0,0), MIN_RADIUS, MAX_RADIUS)
     }
 }
 
@@ -142,7 +142,7 @@ getroottable()[EventsID] <-
     }
 
     OnScriptHook_Change_Pos = function(_) {
-        bot_handler.TeleportBots(Vector(0,0,140))
+        bot_handler.TeleportBots(Vector(0,0,140), MIN_RADIUS, MAX_RADIUS)
     }
 
 	// Cleanup events on round restart
