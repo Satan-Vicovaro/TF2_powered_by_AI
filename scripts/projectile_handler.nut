@@ -216,7 +216,7 @@ function log_tracking_table_sizes()
 local EventsID = UniqueString()
 getroottable()[EventsID] <-
 {
-	OnScriptHook_KillHooks = function(_) {
+	OnScriptHook_KillProjectileHooks = function(_) {
         printl("Deleting hooks for projectile events")
         delete getroottable()[EventsID]
     }
