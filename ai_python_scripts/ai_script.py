@@ -254,11 +254,13 @@ def collect_data_file_training(generated_angles:torch.Tensor, proper_angles:torc
 
 def evaluate_decision_with_angles(generated_angles: torch.Tensor, proper_angles:torch.Tensor):
     #differance in angles as a punishmnet
-    base_penalty = -torch.abs((((generated_angles - proper_angles)))).sum(dim=1)
-
-    celing_fire = torch.abs(generated_angles) > 70
-    extra_penalty = celing_fire.any(dim=1).float() * 10.0
-    return base_penalty - extra_penalty
+    #base_penalty = -torch.abs((((generated_angles - proper_angles)))).sum(dim=1)
+    penalty = torch.zeros(len(generated_angles))
+    for i in range(0, len(generated_angles)):
+        penalty[i] = torch.abs(generated_angles[i][0] - proper_angles[i][0])
+    #celing_fire = torch.abs(generated_angles) > 70
+    #extra_penalty = celing_fire.any(dim=1).float() * 10.0
+    return penalty
 
 def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor_optimizer:ai.optim, file_replay_buffer:ai.ReplayBuffer,
                              overall_evaluation_tracker, accuracy_tracker):
@@ -267,19 +269,20 @@ def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor
     """
 
     (training_data, proper_angles) = file_replay_buffer.sample_from_cluster()
-    t_mean = training_data.mean(dim=0)
-    t_std = training_data.std(dim=0)
-    normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
+    
+    #t_mean = training_data.mean(dim=0)
+    #t_std = training_data.std(dim=0)
+    #normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
     #training_data = training_data * torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
-    means,stds = actor(normalized_t_data) # <------
+    means,stds = actor(training_data) # <------
 
-    noise_scale = 0.001  # tune this
+    noise_scale = 0.3  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
 
     dist = torch.distributions.Normal(noisy_means, stds)
 
-    generated_angles = means
+    generated_angles = dist.sample()
     
     rewards = evaluate_decision_with_angles(generated_angles,proper_angles)
 
@@ -308,7 +311,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     if should_restart:
         return        
         
-    #normalize_data(bots)
+    normalize_data(bots)
 
     t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
         
@@ -510,7 +513,7 @@ def main():
     section_num = 0
     #   sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
 
-    loop_mode = [(LoopMode.OVERFLOW_TEST,100000)]
+    loop_mode = [(LoopMode.IN_GAME_TRAINING,40000)]
 
     loop_mode.reverse()
 
