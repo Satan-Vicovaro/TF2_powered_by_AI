@@ -19,7 +19,9 @@ import torch.nn as nn
 class LoopMode(Enum):
     IN_GAME_TRAINING = 1,
     GENERATE_DATA = 2,
-    FILE_TRAINING = 3
+    FILE_TRAINING = 3,
+    OVERFLOW_TEST = 4,
+
 
 
 
@@ -222,7 +224,7 @@ def evaluate_all_decisions(angles: torch.Tensor, s_bots:dict[np.int64,tf.TfBot],
         if angles[i][1] < -70:
             result[i] -= torch.tensor(abs((angles[i][1] + 70.0)) * 10.0)
             celing_ground_shot = True
-            
+
         if not celing_ground_shot:
             result[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2 + s_bot.damage_dealt)
 
@@ -252,10 +254,10 @@ def collect_data_file_training(generated_angles:torch.Tensor, proper_angles:torc
 
 def evaluate_decision_with_angles(generated_angles: torch.Tensor, proper_angles:torch.Tensor):
     #differance in angles as a punishmnet
-    base_penalty = -torch.abs((((generated_angles - proper_angles)*0.1)**2)).sum(dim=1)
+    base_penalty = -torch.abs((((generated_angles - proper_angles)))).sum(dim=1)
 
-    celing_fire = torch.abs(generated_angles) > 0
-    extra_penalty = celing_fire.any(dim=1).float() * 1000.0
+    celing_fire = torch.abs(generated_angles) > 70
+    extra_penalty = celing_fire.any(dim=1).float() * 10.0
     return base_penalty - extra_penalty
 
 def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor_optimizer:ai.optim, file_replay_buffer:ai.ReplayBuffer,
@@ -264,18 +266,20 @@ def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor
     Here we can speed up progresss by loading data from file and learning from it
     """
 
-    (training_data, proper_angles) = file_replay_buffer.sample()
+    (training_data, proper_angles) = file_replay_buffer.sample_from_cluster()
+    t_mean = training_data.mean(dim=0)
+    t_std = training_data.std(dim=0)
+    normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
+    #training_data = training_data * torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
-    #training_data = training_data * torch.tensor([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
+    means,stds = actor(normalized_t_data) # <------
 
-    means,stds = actor(training_data) # <------
-
-    noise_scale = 0.5  # tune this
+    noise_scale = 0.001  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
 
     dist = torch.distributions.Normal(noisy_means, stds)
 
-    generated_angles = dist.sample()
+    generated_angles = means
     
     rewards = evaluate_decision_with_angles(generated_angles,proper_angles)
 
@@ -285,7 +289,7 @@ def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor
     log_probs = dist.log_prob(generated_angles).sum(dim=1)
 
     loss = -(log_probs * rewards_normal).mean()
-
+    #lg.logger.info(rewards.sum(dim = 1))
     actor_optimizer.zero_grad() # reseting gradient
     loss.backward()
     actor_optimizer.step()
@@ -304,7 +308,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     if should_restart:
         return        
         
-    normalize_data(bots)
+    #normalize_data(bots)
 
     t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
         
@@ -318,7 +322,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     # we need them to create proper griadient for evaluation
     means, stds = actor(training_data)
 
-    noise_scale = 0.35  # tune this
+    noise_scale = 1.0  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
 
     dist = torch.distributions.Normal(noisy_means, stds)
@@ -366,7 +370,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     loss.backward()
     actor_optimizer.step()
 
-
+    noise_scale *= 0.99
     #replay_buffer.update_queue(s_bots, t_bot, angles) 
     #replay_buffer.update_file_csv()
     collect_tracker_data(s_bots, rewards, overall_evaluation_tracker, accuracy_tracker )
@@ -451,6 +455,34 @@ def generate_data_loop(player_input_messages, bots, replay_buffer:ai.ReplayBuffe
        gl.send_message.set()
        time.sleep(0.4)
 
+
+def overflow_test_loop(player_input_messages:Queue, bots):
+    global restart_count, iteration
+    
+    should_restart, restart_count = send_and_wait_for_positions(restart_count, player_input_messages)
+    if should_restart:
+        return       
+    
+    for i, s_bot in enumerate(bots.values()):
+   
+        s_bot.pitch = random.uniform(-2.5 , 2.5)     
+        s_bot.yaw =   random.uniform(-2.5 , 2.5)
+
+    send_angles(bots, player_input_messages) 
+    
+    time.sleep(0.15)
+
+    should_restart, restart_count = send_and_wait_for_damage_data(restart_count, player_input_messages)
+    if should_restart:
+        return
+    
+    should_restart, restart_count = send_wait_for_bullet_data(restart_count, player_input_messages)
+    if should_restart:
+        return
+    
+
+
+
 iteration = 0
 restart_count = 0
 def main():
@@ -472,12 +504,13 @@ def main():
     replay_buffer = ai.ReplayBuffer()
     file_replay_buffer = ai.ReplayBuffer()
     file_replay_buffer.load_from_file_csv()
+    file_replay_buffer.clusterize()
 
     sections = 8 
     section_num = 0
     #   sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
 
-    loop_mode = [(LoopMode.IN_GAME_TRAINING, 50000)]
+    loop_mode = [(LoopMode.OVERFLOW_TEST,100000)]
 
     loop_mode.reverse()
 
@@ -512,6 +545,8 @@ def main():
                 from_file_training_loop(bots,actor,actor_optimizer,file_replay_buffer,overall_evaluation_tracker,accuracy_tracker)
             case LoopMode.GENERATE_DATA: 
                 generate_data_loop(player_input_messages, bots, replay_buffer)
+            case LoopMode.OVERFLOW_TEST:
+                overflow_test_loop(player_input_messages,bots)
             case _ :
                 pass
 

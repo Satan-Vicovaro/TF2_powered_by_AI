@@ -5,8 +5,10 @@ import torch.optim as optim
 import numpy as np
 import random
 
-from collections import deque
+from collections import deque,defaultdict
 import globals as gl
+from sklearn.cluster import KMeans
+
 
 import TfBot as tf
 import pickle
@@ -23,32 +25,34 @@ CRITIC_LR = 1e-2 #critic learning rate
 BUFFER_SIZE = int(1e6) # buffer for ReplayBuffer
 BATCH_SIZE = 64
 
-
+DENSE_DIM = 64
 
 STATE_DIM = 6
 ACTION_DIM = 2
+
+CLUSTER_NUM = 10
 
 class Actor(nn.Module):
     def __init__(self, state_dim=STATE_DIM, action_dim=ACTION_DIM):
         super().__init__()
         
         self.shared_net = nn.Sequential(
-            nn.Linear(state_dim, 32),
+            nn.Linear(state_dim, DENSE_DIM ),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(DENSE_DIM, DENSE_DIM),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(DENSE_DIM, DENSE_DIM),
             nn.ReLU()
-        )
+            )
 
         # our output as mean 
         self.mean_head = nn.Sequential(
-            nn.Linear(32, action_dim),
+            nn.Linear(DENSE_DIM, action_dim),
             nn.Tanh()  # output in [-1, 1] (is scaled in forward() function)
         )
 
         # our output as propabiliy
-        self.log_std_head = nn.Linear(32, action_dim)
+        self.log_std_head = nn.Linear(DENSE_DIM, action_dim)
 
 
     def forward(self, state):
@@ -91,6 +95,8 @@ class ReplayBuffer: #might not me necessary but AI is forgetfull
     
     def __init__(self, max_size = BUFFER_SIZE):
         self.buffer = deque(maxlen=max_size)
+        self.clustered_samples = {}
+
     
     def add(self, transition):
         """   
@@ -203,7 +209,29 @@ class ReplayBuffer: #might not me necessary but AI is forgetfull
             buckets[sector].add((states[i],actions[i]))
 
         return buckets
+    
+    def clusterize(self):
+        q_data = torch.tensor([list(q) for _, q in self.buffer])  # shape [N, 2]
 
+        num_clusters = CLUSTER_NUM  # You can tune this
+
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+        cluster_ids = kmeans.fit_predict(q_data)  # shape [N]
+
+        c_samples = defaultdict(list)
+        for sample, cluster_id in zip(self.buffer, cluster_ids):
+            c_samples[cluster_id].append(sample)
+        self.clustered_samples =c_samples
+
+
+    def sample_from_cluster(self, batch_size = BATCH_SIZE):
+        samples = random.sample(self.clustered_samples[0], batch_size)
+        states, actions = zip(*samples)
+        #return (states , actions) 
+        return (
+            torch.stack(states),
+            torch.stack(actions),
+        )
     
 # Soft Update
 def soft_update(target, source, tau):
@@ -220,9 +248,7 @@ def transition_function(state, action):
     return state + 0.1 * action + np.random.normal(0, 0.01, size=STATE_DIM)
 
 
-def sample_random_state():
-    return np.random.uniform(-1, 1, size=6)
-
+def sample_random_state():critic_optimizer = optim.Adam(critic.parameters(), lr = CRITIC_LR)
 
 def state_from_tfbot(b:tf.TfBot, t:tf.TfBot):
     return torch.Tensor[b.pos_x, b.pos_y, b.pos_z, t.pos_x, t.pos_y, t.pos_z]

@@ -148,7 +148,7 @@ function TrackThink()
     foreach (classname in ::projectile_classes)
     {
         local ent = null;
-        
+
         while (ent = Entities.FindByClassname(ent, classname))
         {
             if (!ent || !ent.IsValid()) continue;
@@ -161,13 +161,14 @@ function TrackThink()
                 if (debug) printl("Projectile has no valid owner yet, skipping.");
                 continue;
             }
+            NetProps.SetPropBool(ent, "m_bForcePurgeFixedupStrings", true)
 
             local ownerIndex = owner.entindex();
             local pos = ent.GetOrigin();
             local target_pos = closest_point_on_bbox(pos, target_ent);
             local currDistance = calculate_distance(pos, target_pos);
             local pos_diff = target_pos - pos;
-            
+
             // Reset if projectile was destroyed and new projectile detected
             if ((ownerIndex in ::projectile_destroyed) && ::projectile_destroyed[ownerIndex] == true)
             {
@@ -177,6 +178,8 @@ function TrackThink()
                 ::projectile_destroyed[ownerIndex] <- false;
 
                 if (debug) printl("Resetting data for owner " + ownerIndex + " due to destroyed projectile.");
+
+                ent.Destroy()
             }
             // Otherwise update if smaller distance or untracked yet
             else if (!(ownerIndex in ::distances) || currDistance <= ::distances[ownerIndex])
@@ -189,13 +192,13 @@ function TrackThink()
             if(debug) {
                 printl("[Tracking] Owner " + ownerIndex + " | Target: " + target_pos + " | Projectile: " + pos + " | Dist: " + currDistance + " | Min dist: " + ::distances[ownerIndex]);
             }
-            
+
         }
     }
 
     if(stress_testing) {
             if (::track_iterations % 1000 == 0) {
-                log_tracking_table_sizes();             
+                log_tracking_table_sizes();
             }
         }
 
