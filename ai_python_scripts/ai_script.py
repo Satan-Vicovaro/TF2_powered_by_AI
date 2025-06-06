@@ -21,9 +21,7 @@ class LoopMode(Enum):
     GENERATE_DATA = 2,
     FILE_TRAINING = 3,
     OVERFLOW_TEST = 4,
-
-
-
+    DDPG_TRAINING = 5
 
 
 
@@ -262,8 +260,17 @@ def evaluate_decision_with_angles(generated_angles: torch.Tensor, proper_angles:
     #extra_penalty = celing_fire.any(dim=1).float() * 10.0
     return penalty
 
-def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor_optimizer:ai.optim, file_replay_buffer:ai.ReplayBuffer,
-                             overall_evaluation_tracker, accuracy_tracker):
+def evaluate_decision_with_angles_DDPG(generated_angles: torch.Tensor, proper_angles: torch.Tensor):
+    # Penalize absolute difference in both angles
+    return -((generated_angles - proper_angles) ** 2).sum(dim=1, keepdim=True)
+
+def from_file_training_loop(
+        bots:dict[np.int64, tf.TfBot],
+        actor:ai.Actor,
+        actor_optimizer:ai.optim,
+        file_replay_buffer:ai.ReplayBuffer,
+        overall_evaluation_tracker, accuracy_tracker
+):
     """
     Here we can speed up progresss by loading data from file and learning from it
     """
@@ -297,6 +304,79 @@ def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor
     loss.backward()
     actor_optimizer.step()
     collect_data_file_training(generated_angles,proper_angles,rewards,overall_evaluation_tracker,accuracy_tracker)
+
+
+def infer_angles(state_6d: torch.Tensor, actor: nn.Module) -> torch.Tensor:
+
+    actor.eval()  # switch to inference mode (disables dropout, etc.)
+
+    if state_6d.ndim == 1:
+        state_6d = state_6d.unsqueeze(0)  # shape: (1, 6)
+
+    mean = state_6d.mean()
+    std = state_6d.std()
+    # Optional: apply the same normalization as used during training
+    norm_state = (state_6d - mean) / (std + 1e-8)
+
+    with torch.no_grad():
+        predicted_angles = actor(norm_state)  # shape: (1, 2)
+
+    return predicted_angles.squeeze(0)  # shape: (2,)
+
+
+def ddpg_training_loop(
+    bots: dict[np.int64, tf.TfBot],
+    actor: ai.Actor,
+    actor_optimizer: ai.optim,
+    critic: ai.Critic,
+    critic_optimizer: ai.optim,
+    file_replay_buffer: ai.ReplayBuffer,
+    overall_evaluation_tracker,
+    accuracy_tracker
+):
+    """
+    DDPG-style offline training loop with deterministic actor
+    """
+
+    # 1. Load offline data (positions and correct angles)
+    states, proper_angles = file_replay_buffer.sample_from_cluster()  # shape: (batch, 6), (batch, 2)
+
+    # 2. Normalize state input
+    t_mean = states.mean(dim=0)
+    t_std = states.std(dim=0)
+    norm_states = (states - t_mean) / (t_std + 1e-8)
+
+    # === CRITIC TRAINING ===
+    # 3. Generate predicted actions (angles) from actor
+    with torch.no_grad():
+        predicted_angles, std = actor(norm_states)
+
+    # 4. Compute true reward using ground truth angles
+    rewards = evaluate_decision_with_angles_DDPG(predicted_angles, proper_angles)#.unsqueeze(1)  # shape: (batch, 1)
+
+    # 5. Critic prediction on predicted actions
+    critic_q = critic(norm_states, predicted_angles)
+
+    # 6. Critic loss = MSE(predicted Q, actual reward)
+    critic_loss = nn.MSELoss()(critic_q, rewards)
+
+    # 7. Backpropagate and update critic
+    critic_optimizer.zero_grad()
+    critic_loss.backward()
+    critic_optimizer.step()
+
+    # === ACTOR TRAINING ===
+    # 8. Generate fresh actions from actor
+    actions, std = actor(norm_states)
+    actor_loss = -critic(norm_states, actions).mean()
+
+    actor_optimizer.zero_grad()
+    actor_loss.backward()
+    actor_optimizer.step()
+
+
+    # === TRACKING ===
+    collect_data_file_training(actions, proper_angles, rewards, overall_evaluation_tracker, accuracy_tracker)
     
 
     
@@ -311,25 +391,25 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     if should_restart:
         return        
        
-    normalize_data(bots)
+#    normalize_data(bots)
 
     t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
         
     # training_data = dict: int -> torch.Tensor
     training_data = crate_training_data(t_bots,s_bots)  
 
-    #t_mean = training_data.mean(dim=0)
-    #t_std = training_data.std(dim=0)
-    #normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
+    t_mean = training_data.mean(dim=0)
+    t_std = training_data.std(dim=0)
+    normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
 
     # we dont extract exact values form out neural network
     # but we get:
     # - mean (most likely action)
     # - std (standard deviation of actions)
     # we need them to create proper griadient for evaluation
-    means, stds = actor(training_data)
+    means, stds = actor(normalized_t_data)
 
-    noise_scale = 0.5  # tune this
+    noise_scale = 0.25  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
 
     dist = torch.distributions.Normal(noisy_means, stds)
@@ -392,6 +472,10 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     
     if iteration % 2000 == 0:
         actor.increase_pitch_cap(2)
+    
+    player_input_messages.put("change_target_pos|") 
+    gl.send_message.set()
+    time.sleep(0.2)
 
 def math_magic(s_x, s_y, s_z, t_x, t_y, t_z):
     # thats almost what we want from our neural network...
@@ -509,6 +593,8 @@ def main():
     # ai setup
     actor = ai.actor
     actor_optimizer = ai.actor_optimizer
+    critic = ai.critic
+    critic_optimizer = ai.critic_optimizer
 
     replay_buffer = ai.ReplayBuffer()
     file_replay_buffer = ai.ReplayBuffer()
@@ -519,7 +605,7 @@ def main():
     section_num = 0
     #   sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
 
-    loop_mode = [(LoopMode.IN_GAME_TRAINING,40000)]
+    loop_mode = [(LoopMode.IN_GAME_TRAINING,20000)]
 
     loop_mode.reverse()
 
@@ -556,6 +642,8 @@ def main():
                 generate_data_loop(player_input_messages, bots, replay_buffer)
             case LoopMode.OVERFLOW_TEST:
                 overflow_test_loop(player_input_messages,bots)
+            case LoopMode.DDPG_TRAINING:
+                ddpg_training_loop(bots,actor,actor_optimizer,critic,critic_optimizer,file_replay_buffer,overall_evaluation_tracker,accuracy_tracker)
             case _ :
                 pass
 
