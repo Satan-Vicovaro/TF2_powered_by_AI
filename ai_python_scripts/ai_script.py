@@ -217,13 +217,13 @@ def evaluate_all_decisions(angles: torch.Tensor, s_bots:dict[np.int64,tf.TfBot],
         celing_ground_shot = False
         #dont shoot into celing
         if angles[i][1] > 70.0:
-            result[i] -= torch.tensor(abs((angles[i][1]  - 70.0)) * 10.0 )
-            celing_ground_shot = True
+            result[i] += -torch.tensor(abs((angles[i][1]  - 70.0)) * 10.0 )
+        #celing_ground_shot = True
         
         #dont shoot into ground
         if angles[i][1] < -70:
-            result[i] -= torch.tensor(abs((angles[i][1] + 70.0)) * 10.0)
-            celing_ground_shot = True
+            result[i] += -torch.tensor(abs((angles[i][1] + 70.0)) * 10.0)
+            #celing_ground_shot = True
 
         if not celing_ground_shot:
             result[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2 + s_bot.damage_dealt)
@@ -270,12 +270,12 @@ def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor
 
     (training_data, proper_angles) = file_replay_buffer.sample_from_cluster()
     
-    #t_mean = training_data.mean(dim=0)
-    #t_std = training_data.std(dim=0)
-    #normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
-    #training_data = training_data * torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+    #training_data = training_data * torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001])
+    t_mean = training_data.mean(dim=0)
+    t_std = training_data.std(dim=0)
+    normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
 
-    means,stds = actor(training_data) # <------
+    means,stds = actor(normalized_t_data) # <------
 
     noise_scale = 0.3  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
@@ -301,7 +301,7 @@ def from_file_training_loop(bots:dict[np.int64, tf.TfBot], actor:ai.Actor, actor
 
     
 
-def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, actor:ai.Actor, actor_optimizer:ai.optim, replay_buffer:ai.ReplayBuffer, overall_evaluation_tracker, accuracy_tracker):
+def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, actor:ai.Actor, actor_optimizer:ai.optim, replay_buffer:ai.ReplayBuffer, overall_evaluation_tracker, accuracy_tracker:list[float]):
     """
     This is in-game loop that trains our nn
     """    
@@ -310,13 +310,17 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     should_restart, restart_count = send_and_wait_for_positions(restart_count, player_input_messages)
     if should_restart:
         return        
-        
+       
     normalize_data(bots)
 
     t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
         
     # training_data = dict: int -> torch.Tensor
     training_data = crate_training_data(t_bots,s_bots)  
+
+    #t_mean = training_data.mean(dim=0)
+    #t_std = training_data.std(dim=0)
+    #normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
 
     # we dont extract exact values form out neural network
     # but we get:
@@ -325,7 +329,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     # we need them to create proper griadient for evaluation
     means, stds = actor(training_data)
 
-    noise_scale = 1.0  # tune this
+    noise_scale = 0.5  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
 
     dist = torch.distributions.Normal(noisy_means, stds)
@@ -336,7 +340,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     # angles = mean  #<- this would be the most likley action 
     angles = dist.sample() # this is some action based from propability
 
-    angles[:, 1] = torch.clamp(angles[:, 1], -89, 89)
+    #angles[:, 1] = torch.clamp(angles[:, 1], -89, 89)
 
     send_tensor_angles(player_input_messages, angles, s_bots)
 
@@ -363,17 +367,17 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     rewards = evaluate_all_decisions(angles,s_bots, t_bot)
         
     # Normalize rewards (optional but stabilizes training)
-    rewards_normal = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+    #rewards_normal = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
     log_probs = dist.log_prob(angles).sum(dim=1)
 
-    loss = -(log_probs * rewards_normal).mean()
+    loss = -(log_probs * rewards).mean()
 
     actor_optimizer.zero_grad() # reseting gradient
     loss.backward()
     actor_optimizer.step()
 
-    noise_scale *= 0.99
+    #noise_scale *= 0.99
     #replay_buffer.update_queue(s_bots, t_bot, angles) 
     #replay_buffer.update_file_csv()
     collect_tracker_data(s_bots, rewards, overall_evaluation_tracker, accuracy_tracker )
@@ -381,11 +385,13 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     display_troch_data(angles,rewards)
     reset_damage_dealt(bots)
     
-    if iteration % 2 == 0:
+    if float(accuracy_tracker[-1]) >= 70.0:
         player_input_messages.put("change_target_pos|") 
         gl.send_message.set()
         time.sleep(0.2)
-        
+    
+    if iteration % 2000 == 0:
+        actor.increase_pitch_cap(2)
 
 def math_magic(s_x, s_y, s_z, t_x, t_y, t_z):
     # thats almost what we want from our neural network...

@@ -179,7 +179,7 @@ function TrackThink()
 
                 if (debug) printl("Resetting data for owner " + ownerIndex + " due to destroyed projectile.");
 
-                ent.Destroy()
+                //ent.Destroy()
             }
             // Otherwise update if smaller distance or untracked yet
             else if (!(ownerIndex in ::distances) || currDistance <= ::distances[ownerIndex])

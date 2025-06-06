@@ -20,7 +20,7 @@ import math
 #Hyperparameters
 GAMMA = 0.99
 TAU = 0.005
-ACTOR_LR = 1e-2 #actor learning rate
+ACTOR_LR = 0.1 #actor learning rate
 CRITIC_LR = 1e-2 #critic learning rate
 BUFFER_SIZE = int(1e6) # buffer for ReplayBuffer
 BATCH_SIZE = 64
@@ -32,6 +32,10 @@ ACTION_DIM = 2
 
 CLUSTER_NUM = 10
 
+START_PITCH_CAP = 70
+
+MAX_PITCH_VALUE = 89
+
 class Actor(nn.Module):
     def __init__(self, state_dim=STATE_DIM, action_dim=ACTION_DIM):
         super().__init__()
@@ -39,8 +43,8 @@ class Actor(nn.Module):
         self.shared_net = nn.Sequential(
             nn.Linear(state_dim, DENSE_DIM ),
             nn.ReLU(),
-            nn.Linear(DENSE_DIM, DENSE_DIM),
-            nn.ReLU(),
+            #nn.Linear(DENSE_DIM, DENSE_DIM),
+            #nn.ReLU(),
             nn.Linear(DENSE_DIM, DENSE_DIM),
             nn.ReLU()
             )
@@ -53,6 +57,7 @@ class Actor(nn.Module):
 
         # our output as propabiliy
         self.log_std_head = nn.Linear(DENSE_DIM, action_dim)
+        self.upper_pitch_cap = START_PITCH_CAP
 
 
     def forward(self, state):
@@ -62,7 +67,7 @@ class Actor(nn.Module):
 
         # scale and offset means
         device = raw_mean.device
-        scales = torch.tensor([200.0, 89.0], device=device)
+        scales = torch.tensor([200.0, self.upper_pitch_cap], device=device)
         
         # shift for [0,400) (the excesive angle does produce error, its properly converted in this case), [-89,89]
         offsets = torch.tensor([1.0, 0.0], device=device) 
@@ -73,6 +78,12 @@ class Actor(nn.Module):
         std = torch.exp(log_std.clamp(-20, 2))  # numerical stability
 
         return mean, std
+    
+    def increase_pitch_cap(self,step):
+        self.upper_pitch_cap += step
+        if self.upper_pitch_cap > MAX_PITCH_VALUE:
+            self.upper_pitch_cap = MAX_PITCH_VALUE
+
     
 
 class Critic(nn.Module):
@@ -266,7 +277,7 @@ critic_target.load_state_dict(critic.state_dict()) # coppying our neural network
 
 # Who is Adam? (Adaptive Moment Estimation) btw
 # Adam is better than stochastic gradient decent (SGD) (better back propagation)
-actor_optimizer = optim.Adam(actor.parameters(), lr = ACTOR_LR) 
+actor_optimizer = optim.SGD(actor.parameters(), lr = ACTOR_LR) 
 critic_optimizer = optim.Adam(critic.parameters(), lr = CRITIC_LR)
 
 
