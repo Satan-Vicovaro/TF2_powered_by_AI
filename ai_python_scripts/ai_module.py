@@ -25,7 +25,7 @@ CRITIC_LR = 1e-2 #critic learning rate
 BUFFER_SIZE = int(1e6) # buffer for ReplayBuffer
 BATCH_SIZE = 64
 
-DENSE_DIM = 64
+DENSE_DIM = 20
 
 STATE_DIM = 6
 ACTION_DIM = 2
@@ -42,10 +42,12 @@ class Actor(nn.Module):
         
         self.shared_net = nn.Sequential(
             nn.Linear(state_dim, DENSE_DIM ),
+            nn.BatchNorm1d(20), 
             nn.ReLU(),
             #nn.Linear(DENSE_DIM, DENSE_DIM),
             #nn.ReLU(),
             nn.Linear(DENSE_DIM, DENSE_DIM),
+            nn.BatchNorm1d(20), 
             nn.ReLU()
             )
 

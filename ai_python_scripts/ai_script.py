@@ -278,11 +278,11 @@ def from_file_training_loop(
     (training_data, proper_angles) = file_replay_buffer.sample_from_cluster()
     
     #training_data = training_data * torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001])
-    t_mean = training_data.mean(dim=0)
-    t_std = training_data.std(dim=0)
-    normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
+    #t_mean = training_data.mean(dim=0)
+    #t_std = training_data.std(dim=0)
+    #normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
 
-    means,stds = actor(normalized_t_data) # <------
+    means,stds = actor(training_data) # <------
 
     noise_scale = 0.3  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
@@ -294,11 +294,11 @@ def from_file_training_loop(
     rewards = evaluate_decision_with_angles(generated_angles,proper_angles)
 
     # Normalize rewards (optional but stabilizes training)
-    rewards_normal = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+    #rewards_normal = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
     log_probs = dist.log_prob(generated_angles).sum(dim=1)
 
-    loss = -(log_probs * rewards_normal).mean()
+    loss = -(log_probs * rewards).mean()
     #lg.logger.info(rewards.sum(dim = 1))
     actor_optimizer.zero_grad() # reseting gradient
     loss.backward()
@@ -391,25 +391,25 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     if should_restart:
         return        
        
-#    normalize_data(bots)
+    #normalize_data(bots)
 
     t_bots,s_bots = dispatch_bots_into_shooters_and_targets(bots)
         
     # training_data = dict: int -> torch.Tensor
     training_data = crate_training_data(t_bots,s_bots)  
 
-    t_mean = training_data.mean(dim=0)
-    t_std = training_data.std(dim=0)
-    normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
+    #t_mean = training_data.mean(dim=0)
+    #t_std = training_data.std(dim=0)
+    #normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
 
     # we dont extract exact values form out neural network
     # but we get:
     # - mean (most likely action)
     # - std (standard deviation of actions)
     # we need them to create proper griadient for evaluation
-    means, stds = actor(normalized_t_data)
+    means, stds = actor(training_data)
 
-    noise_scale = 0.25  # tune this
+    noise_scale = 0.1  # tune this
     noisy_means = means + torch.randn_like(means) * noise_scale
 
     dist = torch.distributions.Normal(noisy_means, stds)
@@ -447,7 +447,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     rewards = evaluate_all_decisions(angles,s_bots, t_bot)
         
     # Normalize rewards (optional but stabilizes training)
-    #rewards_normal = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+    #rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
     log_probs = dist.log_prob(angles).sum(dim=1)
 
@@ -470,12 +470,13 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
         gl.send_message.set()
         time.sleep(0.2)
     
-    if iteration % 2000 == 0:
-        actor.increase_pitch_cap(2)
+    #if iteration % 2000 == 0:
+        #actor.increase_pitch_cap(2)
     
-    player_input_messages.put("change_target_pos|") 
-    gl.send_message.set()
-    time.sleep(0.2)
+    if iteration % 1 == 0:
+        player_input_messages.put("change_target_pos|") 
+        gl.send_message.set()
+        time.sleep(0.2)
 
 def math_magic(s_x, s_y, s_z, t_x, t_y, t_z):
     # thats almost what we want from our neural network...
@@ -605,7 +606,7 @@ def main():
     section_num = 0
     #   sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
 
-    loop_mode = [(LoopMode.IN_GAME_TRAINING,20000)]
+    loop_mode = [ (LoopMode.IN_GAME_TRAINING,30000)]
 
     loop_mode.reverse()
 

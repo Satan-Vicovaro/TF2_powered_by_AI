@@ -20,8 +20,13 @@ class ActorNetwork(nn.Module):
         super().__init__()
         self.network = nn.Sequential(
             nn.Linear(np.prod(observation_space.shape),  hidden_dim),
+            nn.BatchNorm1d(20), 
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(20),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(20),
             nn.ReLU(),
             nn.Linear(hidden_dim, np.prod(action_space.shape)),
             nn.Tanh()
@@ -34,6 +39,8 @@ class ActorNetwork(nn.Module):
         )
         
     def forward(self, observation):
+        print("Input observation shape:", observation.shape)
+
         action = self.network(observation)
         return action * self.action_scale + self.action_bias
     
@@ -173,8 +180,8 @@ def user_input_listener(player_input_messages:Queue):
 class CustomActionSpace:
     "Parameters that descibes our inputs and outputs"
     def __init__(self,high:np.ndarray, low:np.ndarray):
-        self.low = np.array(high)
-        self.high = np.array(low)
+        self.low = low
+        self.high = high
         self.shape = self.low.shape
 
 
@@ -202,8 +209,8 @@ class Enviroment:
             self.user_listener.join()
 
     def get_observation_and_action_spaces(self):
-        action_space = CustomActionSpace(high = np.array([360, 70]),low = np.array([0,-70]))
-        observation_space = CustomActionSpace(np.array([1, 1, 1, 1, 1, 1]),np.array([-1, -1, -1, -1, -1, -1]))
+        action_space = CustomActionSpace(high = np.array([360, 89]),low = np.array([0,-89]))
+        observation_space = CustomActionSpace(np.array([100, 100, 100, 100, 100, 100]),np.array([-100, -100, -100, -100, -100, -100]))
         return action_space , observation_space
 
     
@@ -213,21 +220,20 @@ class Enviroment:
         Resets our enviroment and gets initial position,
         in our case we just send tf positions
         """
-        print("Iteration: " +  str(self.iteration))
-
 
         while True:
-
             should_restart = self.request_positions()  
             if not should_restart:
                 break
         
-        self.normalize_data()
         #positions are saved in self.bots.dict
         self.t_bots,self.s_bots = self.dispatch_bots_into_shooters_and_targets()
         
         data = self.crate_training_data()
-
+        #normalizing data
+        t_mean = data .mean(dim=0)
+        t_std = data .std(dim=0)
+        data  = (data -t_mean)/(t_std + 1e-8)
 
         return data
 
@@ -241,21 +247,10 @@ class Enviroment:
             terminated (if we succes in achieving goal),
             truncated (timeout limit in training session)
         """
-        self.player_input_messages.put("change_target_pos|") 
-        gl.send_message.set()
-        time.sleep(0.2)
+        # this loop is kinda weird
 
-        while True:
-            should_restart = self.request_positions()  
-            if not should_restart:
-                break
-        
+        # evaluate previous position
 
-        self.normalize_data()
-        #positions are saved in self.bots.dict
-        self.t_bots,self.s_bots = self.dispatch_bots_into_shooters_and_targets()
-
-        
         self.send_tensor_angles(angles)
 
         # wait for damage response,
@@ -272,15 +267,40 @@ class Enviroment:
                 break
             
 
-        reward = self.evaluate(angles)
-        next_observation = self.crate_training_data() #observation does not change
+        rewards = self.evaluate(angles)
+
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
         
+        # next positions
+        self.player_input_messages.put("change_target_pos|") 
+        gl.send_message.set()
+        time.sleep(0.2)
+
+        while True:
+            should_restart = self.request_positions()  
+            if not should_restart:
+                break
+        
+        #next positions
+        self.t_bots,self.s_bots = self.dispatch_bots_into_shooters_and_targets()
+        next_observation = self.crate_training_data() #observation does not changes
+
+        #normalizing data
+        t_mean = next_observation.mean(dim=0)
+        t_std = next_observation.std(dim=0)
+        next_observation = (next_observation - t_mean)/(t_std + 1e-8)
+
+        
+        self.reset_damage_dealt()
         self.iteration += 1
         lg.logger.info("Iteration: " + str(self.iteration))
-        return next_observation, reward, torch.zeros_like(reward,dtype=torch.bool), torch.zeros_like(reward,dtype=torch.bool)
+
+        return next_observation, rewards, torch.zeros_like(rewards,dtype=torch.bool), torch.zeros_like(rewards,dtype=torch.bool)
 
         
-
+    def reset_damage_dealt(self):
+        for bot in self.bots.values():
+            bot.damage_dealt = 0
         
     def evaluate(self,angles):
 
@@ -298,7 +318,7 @@ class Enviroment:
                 #celing_ground_shot = True
 
             if not celing_ground_shot:
-                rewards[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2 + s_bot.damage_dealt * 10)
+                rewards[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2)
         
         lg.logger.info("Sum of rewards: " + str(rewards.sum()))
         lg.logger.debug(rewards)
@@ -431,17 +451,17 @@ class DDPGConfig:
     verbose: bool             =        True  # Verbose printing
     total_steps: int          =     100_000  # Total training steps
     target_reward: int | None =        2000  # Target reward used for early stopping
-    learning_starts: int      =          20  # Begin learning after this many steps
+    learning_starts: int      =        1000  # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
     lr: float                 =        3e-4  # Learning rate
-    hidden_dim: int           =         32   # Actor and critic network hidden dim
+    hidden_dim: int           =         20   # Actor and critic network hidden dim
     buffer_capacity: int      =     100_000  # Maximum replay buffer capacity
     batch_size: int           =           20 # Batch size used by learner
     num_steps: int            =           3  # Number of steps to unroll Bellman equation by
     tau: float                =       0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float     =        40.0  # Global gradient clipping value
-    noise_sigma: float        =         0.5  # OU noise standard deviation
-    noise_theta: float        =        0.65  # OU noise reversion rate    
+    noise_sigma: float        =         0.50 # OU noise standard deviation
+    noise_theta: float        =        0.35  # OU noise reversion rate    
 
 
 
@@ -731,7 +751,7 @@ class DDPG:
                 if mean_reward >= self.config.target_reward:
                     if self.config.verbose:
                         print("\nTarget reward achieved. Training stopped.")
-                    break
+                    #break
 
         # Training ended
         if self.config.verbose:
