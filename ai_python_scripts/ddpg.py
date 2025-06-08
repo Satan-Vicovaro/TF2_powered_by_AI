@@ -492,7 +492,7 @@ class DDPGConfig:
     verbose: bool             =        True  # Verbose printing
     total_steps: int          =     100_000  # Total training steps
     target_reward: int | None =        2000  # Target reward used for early stopping
-    learning_starts: int      =           1  # Begin learning after this many steps
+    learning_starts: int      =        10  # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
     lr: float                 =        3e-4  # Learning rate
     hidden_dim: int           =         20   # Actor and critic network hidden dim
@@ -501,7 +501,7 @@ class DDPGConfig:
     num_steps: int            =           1  # Number of steps to unroll Bellman equation by
     tau: float                =       0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float     =        40.0  # Global gradient clipping value
-    noise_sigma: float        =         0.40 # OU noise standard deviation
+    noise_sigma: float        =         0.15 # OU noise standard deviation
     noise_theta: float        =        0.01  # OU noise reversion rate    
 
 
@@ -688,7 +688,8 @@ class DDPG:
             observation_tensor = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
             action = self.actor(observation_tensor).squeeze(0)
             if add_noise:
-                noise = self.actor.action_scale * self.noise_generator.sized_sample(len(action)).to(self.device)
+                noise = self.noise_generator.sized_sample(len(action)).to(self.device)
+                noise *= self.actor.action_scale
                 action = torch.clamp(action + noise, min=-self.actor.action_scale*2, max=self.actor.action_scale*2)
             return action.cpu().numpy()
 
@@ -777,7 +778,7 @@ class DDPG:
             # Update logs
             #logger.log(reward, terminated, truncated)
             for i in range(0,len(next_observations)):
-                if step > self.config.learning_starts:
+                if step < self.config.learning_starts:
                     self.update_file_DDPG(observations[i], actions[i], rewards[i], next_observations[i], terminated[i])
                 
                 # Push experience to buffer
