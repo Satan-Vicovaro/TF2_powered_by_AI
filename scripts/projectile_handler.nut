@@ -4,12 +4,15 @@
 ::distances <- {};
 ::min_positions <- {};
 ::min_positions_diffs <- {};
+::not_decreased <- {};
 ::track_iterations <- 0;
 ::TRACKING_RATE <- 0.01; // seconds between updates
 ::TF_TEAM_BLUE <- 3
 ::projectile_destroyed <- {};  // ownerIndex → bool
 ::projectile_classes <- ["tf_projectile_rocket", "tf_projectile_pipe"];
+::always_decreasing <- {};
 
+const MISS_TICKS = 10; // amount of ticks after we save the position (when not aiming at target)
 const stress_testing = true;
 const debug = true;
 
@@ -119,6 +122,7 @@ function start_tracking()
 function mark_projectile_destroyed(ownerIndex)
 {
     ::projectile_destroyed[ownerIndex] <- true;
+
     if (debug) printl("Marked projectile destroyed for owner " + ownerIndex);
 }
 
@@ -176,17 +180,52 @@ function TrackThink()
                 ::min_positions[ownerIndex] <- pos;
                 ::min_positions_diffs[ownerIndex] <- pos_diff;
                 ::projectile_destroyed[ownerIndex] <- false;
+                ::always_decreasing[ownerIndex] <- true; // Reset decreasing tracker
+                ::not_decreased[ownerIndex] <- 0;
 
                 if (debug) printl("Resetting data for owner " + ownerIndex + " due to destroyed projectile.");
 
-                //ent.Destroy()
+                // ent.Destroy()
             }
-            // Otherwise update if smaller distance or untracked yet
-            else if (!(ownerIndex in ::distances) || currDistance <= ::distances[ownerIndex])
+            else if (!(ownerIndex in ::distances))
             {
                 ::distances[ownerIndex] <- currDistance;
                 ::min_positions[ownerIndex] <- pos;
                 ::min_positions_diffs[ownerIndex] <- pos_diff;
+                ::always_decreasing[ownerIndex] <- true;
+                ::not_decreased[ownerIndex] <- 0;
+            }
+            else if (currDistance <= ::distances[ownerIndex])
+            {
+                ::distances[ownerIndex] <- currDistance;
+                ::min_positions[ownerIndex] <- pos;
+                ::min_positions_diffs[ownerIndex] <- pos_diff;
+                ::always_decreasing[ownerIndex] <- false;
+            }
+            else if (currDistance > ::distances[ownerIndex])
+            {
+                if (::always_decreasing[ownerIndex])
+                {
+                    if(debug) printl("decreasing always");
+
+                    if (!(ownerIndex in ::not_decreased))
+                    {
+                        ::not_decreased[ownerIndex] <- 1;
+                    }
+                    else {
+                        ::not_decreased[ownerIndex]++;
+                    }
+
+                    if (::not_decreased[ownerIndex] == MISS_TICKS)
+                    {
+                        ::distances[ownerIndex] <- currDistance;
+                        ::min_positions[ownerIndex] <- pos;
+                        ::min_positions_diffs[ownerIndex] <- pos_diff;
+                    }
+                }
+                else { printl("decreasing now")}
+
+                
             }
 
             if(debug) {
@@ -221,6 +260,7 @@ getroottable()[EventsID] <-
 {
 	OnScriptHook_KillProjectileHooks = function(_) {
         printl("Deleting hooks for projectile events")
+        
         delete getroottable()[EventsID]
     }
 
