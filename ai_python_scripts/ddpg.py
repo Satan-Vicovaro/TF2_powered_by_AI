@@ -153,14 +153,17 @@ class ReplayBuffer:
 
     def load_from_file_csv(self):
         path = "statistics_and_data/training_data_DDPG.csv"
-        with open(path, "r", newline="") as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                observations = torch.tensor(eval(row["observations"]))
-                actions = torch.tensor(eval(row["actions"]))
-                rewards = torch.tensor(eval(row["rewards"]))
-                next_observations = torch.tensor(eval(row["next_observations"]))
-                self.add((observations, actions,rewards, next_observations, False,False))
+        try:
+            with open(path, "r", newline="") as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    observations = torch.tensor(eval(row["observations"]))
+                    actions = torch.tensor(eval(row["actions"]))
+                    rewards = torch.tensor(eval(row["rewards"]))
+                    next_observations = torch.tensor(eval(row["next_observations"]))
+                    self.add((observations, actions,rewards, next_observations, False,False))
+        except:
+            lg.logger.warning("Error when loading from file: training_data_DDPG.csv")
     
 
 
@@ -274,7 +277,7 @@ class Enviroment:
         return data
 
 
-    def step(self, angles):
+    def step(self, angles, observations):
         """
             the evaluation of the function,
             returns:
@@ -302,15 +305,20 @@ class Enviroment:
             if not should_restart:
                 break
             
-
-        rewards = self.evaluate(angles)
-
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+        mean_distances = torch.mean(observations,dim=0)
+       
+        avg_shooter_pos, avg_target_pos = mean_distances.split(3,dim=0)
+        average_distance = np.linalg.norm(avg_shooter_pos.numpy()-avg_target_pos.numpy())
         
-        # next positions
-        self.player_input_messages.put("change_target_pos|") 
-        gl.send_message.set()
-        time.sleep(0.2)
+        rewards = self.evaluate(angles,average_distance)
+
+        #rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+
+        if self.iteration % 100 == 0:
+            # next positions
+            self.player_input_messages.put("change_target_pos|") 
+            gl.send_message.set()
+            time.sleep(0.2)
 
         while True:
             should_restart = self.request_positions()  
@@ -343,8 +351,8 @@ class Enviroment:
         for bot in self.bots.values():
             bot.damage_dealt = 0
         
-    def evaluate(self,angles):
-
+    def evaluate(self,angles, average_distance_shooter_target):
+     
         rewards = torch.zeros((angles.shape[0]))
         for i,s_bot in enumerate(self.s_bots.values()):
             celing_ground_shot = False
@@ -359,11 +367,12 @@ class Enviroment:
                 #celing_ground_shot = True
 
             if not celing_ground_shot:
-                rewards[i] +=  torch.tensor(-(s_bot.m_distance * 0.1)**2 + s_bot.damage_dealt * 35)
+                rewards[i] +=  torch.tensor(-(s_bot.m_distance) + s_bot.damage_dealt)
         
+        rewards /= average_distance_shooter_target * 100
         lg.logger.info("Sum of rewards: " + str(rewards.sum()))
         lg.logger.debug(rewards)
-        return (rewards - rewards.mean()) / (rewards.std() + 1e-8) #normalized
+        return rewards #(rewards - rewards.mean()) / (rewards.std() + 1e-8) #normalized
 
 
     def random_action(self):
@@ -487,12 +496,12 @@ class DDPGConfig:
     env_name: str             = 'TF2-missile-learner'  # Environment name
     agent_name: str           =      'DDPG'  # Agent name
     device: str               =       'cpu'  # Torch device
-    checkpoint: bool          =       False  # Periodically save model weights
+    checkpoint: bool          =       True  # Periodically save model weights
     num_checkpoints: int      =          20  # Number of checkpoints/printing logs to create
     verbose: bool             =        True  # Verbose printing
-    total_steps: int          =     100_000  # Total training steps
+    total_steps: int          =     10_000  # Total training steps
     target_reward: int | None =        2000  # Target reward used for early stopping
-    learning_starts: int      =        10  # Begin learning after this many steps
+    learning_starts: int      =        200  # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
     lr: float                 =        3e-4  # Learning rate
     hidden_dim: int           =         20   # Actor and critic network hidden dim
@@ -767,13 +776,13 @@ class DDPG:
             
             # Select action
             if step > self.config.learning_starts:
-                actions = self.select_action(observations, add_noise=True)
+                actions = self.select_action(observations, add_noise=False)
             else:
                 # Random if not yet learning
                 actions = self.env.random_action()
                 
             # Environment step
-            next_observations, rewards, terminated, truncated = self.env.step(actions)
+            next_observations, rewards, terminated, truncated = self.env.step(actions,observations)
             
             # Update logs
             #logger.log(reward, terminated, truncated)
@@ -786,9 +795,10 @@ class DDPG:
 
                 
             
-            # Perform learning step
-            if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
-                self.learn()
+            for _ in range(0,5):
+                # Perform learning step
+                if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
+                    self.learn()
 
             # Reset environment and noise if episode ended
             if terminated.any() or truncated.any():

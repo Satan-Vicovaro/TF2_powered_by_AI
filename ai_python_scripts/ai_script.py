@@ -447,6 +447,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     rewards = evaluate_all_decisions(angles,s_bots, t_bot)
         
     # Normalize rewards (optional but stabilizes training)
+    rewards /= rewards.mean().abs()
     #rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
     log_probs = dist.log_prob(angles).sum(dim=1)
