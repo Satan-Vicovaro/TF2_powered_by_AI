@@ -13,7 +13,7 @@ import numpy as np
 import os
 import time
 import numpy as np
-
+import csv
 
 class ActorNetwork(nn.Module):
     def __init__(self, observation_space, action_space, hidden_dim):
@@ -32,14 +32,14 @@ class ActorNetwork(nn.Module):
             nn.Tanh()
         )
         self.register_buffer(
-            "action_scale", torch.tensor((action_space.high - action_space.low) / 2, dtype=torch.float32)
+            "action_scale", torch.tensor((action_space.high - action_space.low)/ 2, dtype=torch.float32)
         )
         self.register_buffer(
             "action_bias", torch.tensor((action_space.high + action_space.low) / 2, dtype=torch.float32)
         )
         
     def forward(self, observation):
-        print("Input observation shape:", observation.shape)
+        #print("Input observation shape:", observation.shape)
 
         action = self.network(observation)
         return action * self.action_scale + self.action_bias
@@ -51,6 +51,8 @@ class CriticNetwork(nn.Module):
         super().__init__()
         self.network = nn.Sequential(
             nn.Linear(np.prod(observation_space.shape) + np.prod(action_space.shape),  hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -81,6 +83,16 @@ class OrnsteinUhlenbeckNoise:
         dx = self.theta * (self.mu - self.state) + self.sigma * torch.randn(self.size)
         self.state += dx
         return self.state.clone()
+    
+    def sized_sample(self, size):
+        "Returns next n values generated in process."
+        states = torch.zeros(size,2)
+        for i in range(0,size):
+            dx = self.theta * (self.mu - self.state) + self.sigma * torch.randn(self.size)
+            self.state += dx
+            states[i] = self.state.clone()
+        return states
+    
     
 
 
@@ -125,6 +137,30 @@ class ReplayBuffer:
         
     def __len__(self):
         return len(self.buffer)
+    
+    def save_to_file_csv(self):
+        path = "statistics_and_data/training_data_DDPG.csv"
+        with open(path, "a", newline="") as file:
+            writer = csv.writer(file)
+            
+            if os.path.exists(path) and os.stat(path).st_size == 0:
+                writer.writerow(["observations", "actions", "rewards", "next_observations"])
+
+            while self.buffer:
+                observations, actions, rewards, next_observations, terminations = self.buffer.pop()
+                writer.writerow([observations.tolist(), actions.tolist(),rewards,next_observations])
+        
+
+    def load_from_file_csv(self):
+        path = "statistics_and_data/training_data_DDPG.csv"
+        with open(path, "r", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                observations = torch.tensor(eval(row["observations"]))
+                actions = torch.tensor(eval(row["actions"]))
+                rewards = torch.tensor(eval(row["rewards"]))
+                next_observations = torch.tensor(eval(row["next_observations"]))
+                self.add((observations, actions,rewards, next_observations, False,False))
     
 
 
@@ -209,7 +245,7 @@ class Enviroment:
             self.user_listener.join()
 
     def get_observation_and_action_spaces(self):
-        action_space = CustomActionSpace(high = np.array([360, 89]),low = np.array([0,-89]))
+        action_space = CustomActionSpace(high = np.array([360, 0]),low = np.array([0,-70]))
         observation_space = CustomActionSpace(np.array([100, 100, 100, 100, 100, 100]),np.array([-100, -100, -100, -100, -100, -100]))
         return action_space , observation_space
 
@@ -254,7 +290,7 @@ class Enviroment:
         self.send_tensor_angles(angles)
 
         # wait for damage response,
-        time.sleep(1.5)
+        time.sleep(1.25)
 
         while True:
             should_restart = self.request_damage_data()
@@ -281,14 +317,19 @@ class Enviroment:
             if not should_restart:
                 break
         
+        # this is better 
+        self.normalize_data()
+
         #next positions
         self.t_bots,self.s_bots = self.dispatch_bots_into_shooters_and_targets()
         next_observation = self.crate_training_data() #observation does not changes
 
+
+        #it does not work properly
         #normalizing data
-        t_mean = next_observation.mean(dim=0)
-        t_std = next_observation.std(dim=0)
-        next_observation = (next_observation - t_mean)/(t_std + 1e-8)
+        #t_mean = next_observation.mean(dim=0)
+        #t_std = next_observation.std(dim=0)
+        #next_observation = (next_observation - t_mean)/(t_std + 1e-8)
 
         
         self.reset_damage_dealt()
@@ -318,7 +359,7 @@ class Enviroment:
                 #celing_ground_shot = True
 
             if not celing_ground_shot:
-                rewards[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2)
+                rewards[i] +=  torch.tensor(-(s_bot.m_distance * 0.1)**2 + s_bot.damage_dealt * 35)
         
         lg.logger.info("Sum of rewards: " + str(rewards.sum()))
         lg.logger.debug(rewards)
@@ -329,7 +370,7 @@ class Enviroment:
         angles = torch.zeros(len(self.s_bots),2)
         for i, bot in enumerate(self.s_bots):
             angles[i][0] = torch.tensor(random.uniform(0,360))
-            angles[i][1] = torch.tensor(random.uniform(-89, 0))
+            angles[i][1] = torch.tensor(random.uniform(-70, 0))
         return angles
 
     def request_bullet_data(self):
@@ -451,17 +492,17 @@ class DDPGConfig:
     verbose: bool             =        True  # Verbose printing
     total_steps: int          =     100_000  # Total training steps
     target_reward: int | None =        2000  # Target reward used for early stopping
-    learning_starts: int      =        1000  # Begin learning after this many steps
+    learning_starts: int      =           1  # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
     lr: float                 =        3e-4  # Learning rate
     hidden_dim: int           =         20   # Actor and critic network hidden dim
-    buffer_capacity: int      =     100_000  # Maximum replay buffer capacity
+    buffer_capacity: int      =     200_000  # Maximum replay buffer capacity
     batch_size: int           =           20 # Batch size used by learner
-    num_steps: int            =           3  # Number of steps to unroll Bellman equation by
+    num_steps: int            =           1  # Number of steps to unroll Bellman equation by
     tau: float                =       0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float     =        40.0  # Global gradient clipping value
-    noise_sigma: float        =         0.50 # OU noise standard deviation
-    noise_theta: float        =        0.35  # OU noise reversion rate    
+    noise_sigma: float        =         0.40 # OU noise standard deviation
+    noise_theta: float        =        0.01  # OU noise reversion rate    
 
 
 
@@ -615,6 +656,16 @@ class DDPG:
             size=np.prod(action_space.shape), mu=0.0, sigma=config.noise_sigma, theta=config.noise_theta
         )
         self.config = config
+
+    def update_file_DDPG(self, observations:torch.Tensor, actions, rewards:torch.Tensor, next_observations, terminated):
+        path = "statistics_and_data/training_data_DDPG.csv"
+        with open(path, "a", newline="") as file:
+            writer = csv.writer(file)
+            
+            if os.path.exists(path) and os.stat(path).st_size == 0:
+                writer.writerow(["observations", "actions", "rewards", "next_observations"])
+            else:
+                writer.writerow([observations.tolist(), actions.tolist(), float(rewards) ,next_observations.tolist()])
     
 
     def checkpoint(self, steps):
@@ -637,8 +688,8 @@ class DDPG:
             observation_tensor = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
             action = self.actor(observation_tensor).squeeze(0)
             if add_noise:
-                noise = self.actor.action_scale * self.noise_generator.sample().to(self.device)
-                action = torch.clamp(action + noise, min=-self.actor.action_scale, max=self.actor.action_scale)
+                noise = self.actor.action_scale * self.noise_generator.sized_sample(len(action)).to(self.device)
+                action = torch.clamp(action + noise, min=-self.actor.action_scale*2, max=self.actor.action_scale*2)
             return action.cpu().numpy()
 
 
@@ -705,6 +756,8 @@ class DDPG:
         # Initialise Logger
         logger = Logger(total_steps=self.config.total_steps, num_checkpoints=self.config.num_checkpoints)
         
+        self.buffer.load_from_file_csv()
+
         # Reset environment
         observations = self.env.reset()
         
@@ -724,8 +777,13 @@ class DDPG:
             # Update logs
             #logger.log(reward, terminated, truncated)
             for i in range(0,len(next_observations)):
-             # Push experience to buffer
+                if step > self.config.learning_starts:
+                    self.update_file_DDPG(observations[i], actions[i], rewards[i], next_observations[i], terminated[i])
+                
+                # Push experience to buffer
                 self.buffer.add((observations[i], actions[i], rewards[i], next_observations[i], terminated[i], truncated[i]))
+
+                
             
             # Perform learning step
             if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
