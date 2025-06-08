@@ -314,7 +314,7 @@ class Enviroment:
 
         #rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
-        if self.iteration % 100 == 0:
+        if self.iteration % 1 == 0:
             # next positions
             self.player_input_messages.put("change_target_pos|") 
             gl.send_message.set()
@@ -499,18 +499,18 @@ class DDPGConfig:
     checkpoint: bool          =       True  # Periodically save model weights
     num_checkpoints: int      =          20  # Number of checkpoints/printing logs to create
     verbose: bool             =        True  # Verbose printing
-    total_steps: int          =     10_000  # Total training steps
+    total_steps: int          =     100_000  # Total training steps
     target_reward: int | None =        2000  # Target reward used for early stopping
-    learning_starts: int      =        200  # Begin learning after this many steps
+    learning_starts: int      =         100  # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
-    lr: float                 =        3e-4  # Learning rate
+    lr: float                 =        0.e-4 # Learning rate
     hidden_dim: int           =         20   # Actor and critic network hidden dim
-    buffer_capacity: int      =     200_000  # Maximum replay buffer capacity
+    buffer_capacity: int      =     100_000  # Maximum replay buffer capacity
     batch_size: int           =           20 # Batch size used by learner
     num_steps: int            =           1  # Number of steps to unroll Bellman equation by
     tau: float                =       0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float     =        40.0  # Global gradient clipping value
-    noise_sigma: float        =         0.15 # OU noise standard deviation
+    noise_sigma: float        =         0.05 # OU noise standard deviation
     noise_theta: float        =        0.01  # OU noise reversion rate    
 
 
@@ -776,7 +776,7 @@ class DDPG:
             
             # Select action
             if step > self.config.learning_starts:
-                actions = self.select_action(observations, add_noise=False)
+                actions = self.select_action(observations, add_noise=True)
             else:
                 # Random if not yet learning
                 actions = self.env.random_action()
@@ -795,7 +795,7 @@ class DDPG:
 
                 
             
-            for _ in range(0,5):
+            for _ in range(0,30):
                 # Perform learning step
                 if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
                     self.learn()
