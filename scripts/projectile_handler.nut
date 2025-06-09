@@ -11,10 +11,10 @@
 ::projectile_destroyed <- {};  // ownerIndex → bool
 ::projectile_classes <- ["tf_projectile_rocket", "tf_projectile_pipe"];
 ::always_decreasing <- {};
+::recent_position <- {};
 
 const MISS_TICKS = 10; // amount of ticks after we save the position (when not aiming at target)
-const stress_testing = true;
-const debug = true;
+const debug = false;
 
 IncludeScript("file_scripts");
 
@@ -70,19 +70,27 @@ function send_projectile_info()
     if(debug) printl("sending info");
 
     local projectile_info = ""
-    local source_map = ::min_positions_diffs
 
-    if(source_map.len() == 0)
+    if(::min_positions_diffs.len() == 0)
     {
         projectile_info = "b none\n";
     }
     else
     {
-        foreach(ownerIndex, data in source_map)
+        // sending min_positions_diffs
+        foreach(ownerIndex, data in ::min_positions_diffs)
         {
             projectile_info += format("b %d %s\n", ownerIndex, vector_to_string(data));
         }
+        //sending recent positions
+        foreach(ownerIndex, position in ::recent_position)
+        {
+            projectile_info += format("bpos %d %s\n", ownerIndex, vector_to_string(position));
+        }
     }
+
+
+
 
     append_to_file("squirrel_out", projectile_info);
 
@@ -173,7 +181,10 @@ function TrackThink()
             local currDistance = calculate_distance(pos, target_pos);
             local pos_diff = target_pos - pos;
 
-            // Reset if projectile was destroyed and new projectile detected
+            // Save recent position
+            ::recent_position[ownerIndex] <- pos;
+            
+            //reset if projectile was destroyed and new projectile detected
             if ((ownerIndex in ::projectile_destroyed) && ::projectile_destroyed[ownerIndex] == true)
             {
                 ::distances[ownerIndex] <- currDistance;
@@ -223,7 +234,7 @@ function TrackThink()
                         ::min_positions_diffs[ownerIndex] <- pos_diff;
                     }
                 }
-                else { printl("decreasing now")}
+                else { if(debug) printl("decreasing now")}
 
                 
             }
@@ -234,12 +245,6 @@ function TrackThink()
 
         }
     }
-
-    if(stress_testing) {
-            if (::track_iterations % 1000 == 0) {
-                log_tracking_table_sizes();
-            }
-        }
 
     return ::TRACKING_RATE;
 }
@@ -276,6 +281,10 @@ getroottable()[EventsID] <-
         if (debug) printl("Projectile removed: attacker = " + ownerIndex);
 
         mark_projectile_destroyed(ownerIndex);
+    }
+
+    OnScriptHook_SendProjectileInfo = function(_) {
+       send_projectile_info()
     }
 }
 

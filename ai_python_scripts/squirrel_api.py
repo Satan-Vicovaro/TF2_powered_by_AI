@@ -137,8 +137,25 @@ def handle_squirrel_output(bots:dict[np.int64,tf.TfBot]):
                         lg.logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")  
                         continue
                     bots[bot_id].m_distance = m_distance
+                    bots[bot_id].m_miss_x = x
+                    bots[bot_id].m_miss_y = y
+                    bots[bot_id].m_miss_z = z
 
-                case"_":
+                case "bpos":
+                    bullet_data = True
+                    bot_id = np.int64(parts[1])
+                    x = np.float32(parts[2])
+                    y = np.float32(parts[3])
+                    z = np.float32(parts[4]) 
+
+                    if not bot_id in bots:
+                        lg.logger.error("Error: Bot with id: " + str(bot_id) + " does not exist")  
+
+                    bots[bot_id].m_x = x
+                    bots[bot_id].m_y = y
+                    bots[bot_id].m_z = z
+
+                case "_":
                     lg.logger.error("Error: why start of message is: " + parts[0])
 
 

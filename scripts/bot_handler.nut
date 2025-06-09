@@ -3,9 +3,6 @@
 ::TF_TEAM_BLUE <- 3
 ::MIN_RADIUS <- 1
 ::MAX_RADIUS <- 2
-::BOT_TYPE <- "soldier"
-
-IncludeScript("projectile_handler")
 
 class::bot_handler {
 	bot_list = []
@@ -148,10 +145,6 @@ getroottable()[EventsID] <-
 	OnScriptHook_Kill_BotHandler = function(_) {
         printl("Deleting hooks for bot_handler")
         delete getroottable()[EventsID]
-    }
-
-    OnScriptHook_SendProjectileInfo = function(_) {
-       send_projectile_info()
     }
 }
 local EventsTable = getroottable()[EventsID]

@@ -266,13 +266,14 @@ class Enviroment:
                 break
         
         #positions are saved in self.bots.dict
-        self.t_bots,self.s_bots = self.dispatch_bots_into_shooters_and_targets()
+        self.t_bots, self.s_bots = self.dispatch_bots_into_shooters_and_targets()
+
+        #normalizing data
+        self.normalize_data()
+
         
         data = self.crate_training_data()
-        #normalizing data
-        t_mean = data .mean(dim=0)
-        t_std = data .std(dim=0)
-        data  = (data -t_mean)/(t_std + 1e-8)
+
 
         return data
 
@@ -283,7 +284,7 @@ class Enviroment:
             returns:
             next_obsevation (next bots positions, it does not change in our case),
             reward,
-            terminated (if we succes in achieving goal),
+            terminated (if we succeed in achieving goal),
             truncated (timeout limit in training session)
         """
         # this loop is kinda weird
@@ -304,15 +305,8 @@ class Enviroment:
             should_restart = self.request_bullet_data()
             if not should_restart:
                 break
-            
-        mean_distances = torch.mean(observations,dim=0)
-       
-        avg_shooter_pos, avg_target_pos = mean_distances.split(3,dim=0)
-        average_distance = np.linalg.norm(avg_shooter_pos.numpy()-avg_target_pos.numpy())
-        
-        rewards = self.evaluate(angles,average_distance)
 
-        #rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+        rewards = self.evaluate(angles, observations)
 
         if self.iteration % 1 == 0:
             # next positions
@@ -326,6 +320,7 @@ class Enviroment:
                 break
         
         # this is better 
+        self.nomalize_missiles()
         self.normalize_data()
 
         #next positions
@@ -333,13 +328,6 @@ class Enviroment:
         next_observation = self.crate_training_data() #observation does not changes
 
 
-        #it does not work properly
-        #normalizing data
-        #t_mean = next_observation.mean(dim=0)
-        #t_std = next_observation.std(dim=0)
-        #next_observation = (next_observation - t_mean)/(t_std + 1e-8)
-
-        
         self.reset_damage_dealt()
         self.iteration += 1
         lg.logger.info("Iteration: " + str(self.iteration))
@@ -351,27 +339,25 @@ class Enviroment:
         for bot in self.bots.values():
             bot.damage_dealt = 0
         
-    def evaluate(self,angles, average_distance_shooter_target):
-     
-        rewards = torch.zeros((angles.shape[0]))
-        for i,s_bot in enumerate(self.s_bots.values()):
-            celing_ground_shot = False
-            #dont shoot into celing
-            if angles[i][1] > 70.0:
-                rewards[i] += -torch.tensor(abs((angles[i][1]  - 70.0)) * 10.0 )
-                #celing_ground_shot = True
-            
-            #dont shoot into ground
-            if angles[i][1] < -70:
-                rewards[i] += -torch.tensor(abs((angles[i][1] + 70.0)) * 10.0)
-                #celing_ground_shot = True
-
-            if not celing_ground_shot:
-                rewards[i] +=  torch.tensor(-(s_bot.m_distance) + s_bot.damage_dealt)
+    def evaluate(self,angles, observations:torch.Tensor):
         
-        rewards /= average_distance_shooter_target * 100
-        lg.logger.info("Sum of rewards: " + str(rewards.sum()))
-        lg.logger.debug(rewards)
+
+        # proper evaluation function that uses ⭐️real math⭐️ to calculate proper value
+        # value is in range -1, 1
+        rewards = torch.zeros((angles.shape[0]))
+
+        s_pos, t_pos = observations.split(3,dim=1)
+        v_shooter_target = t_pos - s_pos # vector: shooter ---> target
+        for i, s_bot in enumerate(self.s_bots.values()):
+
+            missile_pos = torch.tensor([s_bot.m_x, s_bot.m_y, s_bot.m_z])
+            v_shooter_missile = missile_pos - s_pos[i] # vector: shooter ---> missile
+            
+            # angle between shooter ---> missile and shooter ---> target
+            cosine_angle = torch.dot(v_shooter_missile, v_shooter_target[i]) / (v_shooter_missile.norm() * v_shooter_target[i].norm())
+            rewards[i] = cosine_angle 
+
+        lg.logger.info(rewards)
         return rewards #(rewards - rewards.mean()) / (rewards.std() + 1e-8) #normalized
 
 
@@ -461,6 +447,10 @@ class Enviroment:
         for bot in self.bots.values():
             bot.normalize()
 
+    def nomalize_missiles(self):
+        for bot in self.bots.values():
+            bot.normalize_missiles()
+
     def dispatch_bots_into_shooters_and_targets(self):
 
         target_bots: dict[np.int64,tf.TfBot] = {}
@@ -488,7 +478,6 @@ class Enviroment:
 
         t_bot:tf.TfBot = next(iter(self.t_bots.values()))
 
-        
         return torch.tensor([(bot.pos_x, bot.pos_y, bot.pos_z, t_bot.pos_x, t_bot.pos_y,t_bot.pos_z) for bot in self.s_bots.values()], dtype=torch.float32)
     
 
