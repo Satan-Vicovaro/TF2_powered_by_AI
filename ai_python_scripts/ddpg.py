@@ -343,7 +343,7 @@ class Enviroment:
         
 
         # proper evaluation function that uses ⭐️real math⭐️ to calculate proper value
-        # value is in range -1, 1
+        # value is in range [-1, 2] 
         rewards = torch.zeros((angles.shape[0]))
 
         s_pos, t_pos = observations.split(3,dim=1)
@@ -357,7 +357,12 @@ class Enviroment:
             cosine_angle = torch.dot(v_shooter_missile, v_shooter_target[i]) / (v_shooter_missile.norm() * v_shooter_target[i].norm())
             rewards[i] = cosine_angle 
 
-        lg.logger.info(rewards)
+            if s_bot.damage_dealt > 0:
+                rewards[i] *= 2 #aditional reward for hiting target
+
+        lg.logger.debug(rewards)
+        lg.logger.info("Average reward: " + str(rewards.mean()))
+        lg.logger.info("Sum of rewards: " + str(rewards.sum()))
         return rewards #(rewards - rewards.mean()) / (rewards.std() + 1e-8) #normalized
 
 
