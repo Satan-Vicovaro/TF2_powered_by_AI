@@ -149,10 +149,6 @@ getroottable()[EventsID] <-
         printl("Deleting hooks for bot_handler")
         delete getroottable()[EventsID]
     }
-
-    OnScriptHook_SendProjectileInfo = function(_) {
-       send_projectile_info()
-    }
 }
 local EventsTable = getroottable()[EventsID]
 foreach (name, callback in EventsTable) EventsTable[name] = callback.bindenv(this)
