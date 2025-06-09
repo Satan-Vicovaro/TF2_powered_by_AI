@@ -234,7 +234,7 @@ function TrackThink()
                         ::min_positions_diffs[ownerIndex] <- pos_diff;
                     }
                 }
-                else { printl("decreasing now")}
+                else { if(debug) printl("decreasing now")}
 
                 
             }
