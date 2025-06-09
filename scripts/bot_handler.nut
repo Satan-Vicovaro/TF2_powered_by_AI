@@ -3,9 +3,6 @@
 ::TF_TEAM_BLUE <- 3
 ::MIN_RADIUS <- 1
 ::MAX_RADIUS <- 2
-::BOT_TYPE <- "soldier"
-
-IncludeScript("projectile_handler")
 
 class::bot_handler {
 	bot_list = []

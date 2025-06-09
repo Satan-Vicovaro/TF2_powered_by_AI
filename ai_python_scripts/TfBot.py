@@ -24,6 +24,9 @@ class TfBot:
             m_miss_y:float = 0.0,
             m_miss_z: float = 0.0,
             m_distance: float = 0.0,
+            m_x: float = 0.0,
+            m_y: float = 0.0,
+            m_z: float = 0.0
         ):
             self.pos_x = np.float64(pos_x)
             self.pos_y = np.float64(pos_y)
@@ -45,6 +48,10 @@ class TfBot:
 
             self.m_distance = np.float32(m_distance)
 
+            self.m_x = np.float32(m_x)
+            self.m_y = np.float32(m_y)
+            self.m_z = np.float32(m_z)
+
 
     def normalize(self):        
         normalize_factor = 1000.0 #aka radius of our circle
@@ -55,4 +62,8 @@ class TfBot:
         self.m_miss_x /= normalize_factor
         self.m_miss_y /= normalize_factor
         self.m_miss_z /= normalize_factor
+
+        self.m_x /= normalize_factor
+        self.m_y /= normalize_factor
+        self.m_z /= normalize_factor
 
