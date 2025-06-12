@@ -3,13 +3,13 @@
 This project aims to implement a neural network that attempts to hit a target within the Team Fortress 2 (TF2) game environment. It was created as part of the *Artificial Intelligence* course at Gdańsk University of Technology.
 
 
---
+
 
 ## Features
 
 ### TF2 Vscripts
 - Bot position tracking  
-- Soldier missile tracking  
+- Soldier's missile tracking  
 - Bot spawning in designated positions  
 - Python listener integration
 
@@ -18,7 +18,7 @@ This project aims to implement a neural network that attempts to hit a target wi
 - Two neural network implementations (including a DDPG model)  
 - Basic logging system
 
-> **Note:** The neural networks are currently non-functional, likely due to bugs in the code. This maybe solved in the future.
+> **Note:** The neural networks are currently non-functional, likely due to bugs in the code. This might be resolved in the future.
 
 The DDPG implementation is based on this:  
 https://www.kaggle.com/code/auxeno/ddpg-rl/notebook
@@ -35,30 +35,35 @@ https://www.kaggle.com/code/auxeno/ddpg-rl/notebook
 ### Setup Instructions
 
 1. **Initial Configuration**
-- `python load_to_tf2.py`
+ ```
+ python load_to_tf2.py
+ ```
 - This creates a `config.json` file. Open it and specify the correct paths to your directories at TF2.
 
 2. **Load Files into TF2**
-python load_to_tf2.py
-Run the script again to load the necessary files into the appropriate TF2 directories.
 
-3. **Start TF2 and Create a Game**
-- Launch Team Fortress 2.
-- Start a new game on map: `proper_train_map`.
+    Run this command again to load the necessary files into the appropriate TF2 directories:
+```
+python load_to_tf2.py
+```
+
+4. **Start TF2 and Create a Game**
+  - Launch Team Fortress 2.
+  - Start a new game on map: `proper_train_map`.
 
 4. **Initialize the Server**
-- Open the in-game developer console.
-- Run the following command:
-  ```
-  exec server_init
-  ```
+  - Open the in-game developer console.
+  - Run the following command:
+```
+exec server_init
+```
 5. **Start the AI Script**
-- python ai_script.py
-
- - Then type: `start` in the terminal to begin the AI routine.
+```
+python ai_script.py
+```
+  - Then type: `start` in the terminal to begin the AI routine.
 
 ---
-
 ## Useful Resources
 
 - https://developer.valvesoftware.com/wiki/Team_Fortress_2/Scripting/Script_Functions  
