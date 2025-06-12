@@ -67,7 +67,6 @@ class TfBot:
         
         self.m_x /= normalize_factor
         self.m_y /= normalize_factor
-        self.m_z /= normalize_factor        self.m_x /= normalize_factor
-        self.m_y /= normalize_factor
         self.m_z /= normalize_factor
+        
 
