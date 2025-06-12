@@ -59,11 +59,15 @@ class TfBot:
         self.pos_y /= normalize_factor
         self.pos_z /= normalize_factor
 
+    def normalize_missiles(self):
+        normalize_factor = 1000.0 #aka radius of our circle
         self.m_miss_x /= normalize_factor
         self.m_miss_y /= normalize_factor
         self.m_miss_z /= normalize_factor
-
+        
         self.m_x /= normalize_factor
+        self.m_y /= normalize_factor
+        self.m_z /= normalize_factor        self.m_x /= normalize_factor
         self.m_y /= normalize_factor
         self.m_z /= normalize_factor
 
