@@ -39,7 +39,7 @@ def display_hit_data(bots:dict[np.int64,tf.TfBot]):
         if bot.damage_dealt != 0:
             lg.logger.info("Bot: {0} , dealt: {1}".format(bot_id,bot.damage_dealt))
  
-        #reseting damage_dealt!!
+        #reseting damage_dealt!
         bot.damage_dealt = 0
 
 
@@ -117,7 +117,7 @@ def user_input_listener(player_input_messages:Queue):
             elif user_input.lower() == "start":
                 player_input_messages.put("start |")
                 gl.send_message.set()
-                # watiging for squirrel to init it self 
+                # watiging for squirrel to init itself 
                 time.sleep(0.25) 
                 gl.start_program.set()
                 continue
@@ -208,26 +208,19 @@ def evaluate_all_decisions(angles: torch.Tensor, s_bots:dict[np.int64,tf.TfBot],
     # Current evaluation:
     # eval = -distance(m_miss , t_bot.pos) + damage_dealt    
     
-    #p1 = np.array([t_bot.pos_x, t_bot.pos_y, t_bot.pos_z]) 
 
     result = torch.zeros((angles.shape[0]))
     for i,s_bot in enumerate(s_bots.values()):
-        celing_ground_shot = False
+        
         #dont shoot into celing
         if angles[i][1] > 70.0:
             result[i] += -torch.tensor(abs((angles[i][1]  - 70.0)) * 10.0 )
-        #celing_ground_shot = True
         
         #dont shoot into ground
         if angles[i][1] < -70:
             result[i] += -torch.tensor(abs((angles[i][1] + 70.0)) * 10.0)
-            #celing_ground_shot = True
 
-        if not celing_ground_shot:
-            result[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2 + s_bot.damage_dealt)
-
-    if sum(result) < -30000:
-        print("Halo czemu jestem tak ujemny?")
+        result[i] +=  torch.tensor(-(s_bot.m_distance * 0.01)**2 + s_bot.damage_dealt)
 
     return result
 
@@ -398,10 +391,6 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     # training_data = dict: int -> torch.Tensor
     training_data = crate_training_data(t_bots,s_bots)  
 
-    #t_mean = training_data.mean(dim=0)
-    #t_std = training_data.std(dim=0)
-    #normalized_t_data=(training_data-t_mean)/(t_std + 1e-8)
-
     # we dont extract exact values form out neural network
     # but we get:
     # - mean (most likely action)
@@ -434,6 +423,7 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
     should_restart, restart_count = send_wait_for_bullet_data(restart_count, player_input_messages)
     if should_restart:
         return
+    
     # evaluation
     # current option:
     # our_evaluation --teaches--> actor
@@ -448,7 +438,6 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
         
     # Normalize rewards (optional but stabilizes training)
     rewards /= rewards.mean().abs()
-    #rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
     log_probs = dist.log_prob(angles).sum(dim=1)
 
@@ -471,8 +460,6 @@ def in_game_training_loop(bots:dict[np.int64, tf.TfBot], player_input_messages, 
         gl.send_message.set()
         time.sleep(0.2)
     
-    #if iteration % 2000 == 0:
-        #actor.increase_pitch_cap(2)
     
     if iteration % 1 == 0:
         player_input_messages.put("change_target_pos|") 
@@ -535,7 +522,6 @@ def generate_data_loop(player_input_messages, bots, replay_buffer:ai.ReplayBuffe
         return
 
      
-
     replay_buffer.update_queue(s_bots,t_bot, angles)
     replay_buffer.update_file_csv()
     display_hit_data(bots) 
@@ -603,11 +589,11 @@ def main():
     file_replay_buffer.load_from_file_csv()
     file_replay_buffer.clusterize()
 
-    sections = 8 
-    section_num = 0
+    #---segregating data into sectors:
+    #   sections = 8 
     #   sorted_r_buffers = file_replay_buffer.split_data_into_sectors(num_sectors=sections)
 
-    loop_mode = [ (LoopMode.IN_GAME_TRAINING,30000)]
+    loop_mode = [ (LoopMode.IN_GAME_TRAINING,10000)]
 
     loop_mode.reverse()
 
@@ -629,7 +615,7 @@ def main():
     while not gl.end_program.is_set(): 
         if without_mode:
             if len(loop_mode) == 0:
-                #gl.end_program.set()
+                gl.end_program.set()
                 break
             mode, iterations_to_make = loop_mode.pop()
             without_mode = False
