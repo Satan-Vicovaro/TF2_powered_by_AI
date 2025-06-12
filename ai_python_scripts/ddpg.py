@@ -18,15 +18,12 @@ import csv
 class ActorNetwork(nn.Module):
     def __init__(self, observation_space, action_space, hidden_dim):
         super().__init__()
+        
+        #nn.BatchNorm1d(20) <--- this can be used inside nn
         self.network = nn.Sequential(
             nn.Linear(np.prod(observation_space.shape),  hidden_dim),
-            nn.BatchNorm1d(20), 
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(20),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(20),
             nn.ReLU(),
             nn.Linear(hidden_dim, np.prod(action_space.shape)),
             nn.Tanh()
@@ -51,8 +48,6 @@ class CriticNetwork(nn.Module):
         super().__init__()
         self.network = nn.Sequential(
             nn.Linear(np.prod(observation_space.shape) + np.prod(action_space.shape),  hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -361,8 +356,8 @@ class Enviroment:
                 rewards[i] *= 2 #aditional reward for hiting target
 
         lg.logger.debug(rewards)
-        lg.logger.info("Average reward: " + str(rewards.mean()))
-        lg.logger.info("Sum of rewards: " + str(rewards.sum()))
+        lg.logger.info("Average reward: {0:.2f}".format(rewards.mean()))
+        lg.logger.info("Sum of rewards: {0:.2f}".format(rewards.sum()))
         return rewards #(rewards - rewards.mean()) / (rewards.std() + 1e-8) #normalized
 
 
@@ -490,7 +485,7 @@ class DDPGConfig:
     env_name: str             = 'TF2-missile-learner'  # Environment name
     agent_name: str           =      'DDPG'  # Agent name
     device: str               =       'cpu'  # Torch device
-    checkpoint: bool          =       True  # Periodically save model weights
+    checkpoint: bool          =       True   # Periodically save model weights
     num_checkpoints: int      =          20  # Number of checkpoints/printing logs to create
     verbose: bool             =        True  # Verbose printing
     total_steps: int          =     100_000  # Total training steps
@@ -498,14 +493,14 @@ class DDPGConfig:
     learning_starts: int      =         100  # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
     lr: float                 =        0.e-4 # Learning rate
-    hidden_dim: int           =         20   # Actor and critic network hidden dim
+    hidden_dim: int           =         128  # Actor and critic network hidden dim
     buffer_capacity: int      =     100_000  # Maximum replay buffer capacity
     batch_size: int           =           20 # Batch size used by learner
-    num_steps: int            =           1  # Number of steps to unroll Bellman equation by
+    num_steps: int            =           4  # Number of steps to unroll Bellman equation by
     tau: float                =       0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float     =        40.0  # Global gradient clipping value
-    noise_sigma: float        =         0.05 # OU noise standard deviation
-    noise_theta: float        =        0.01  # OU noise reversion rate    
+    noise_sigma: float        =         0.10 # OU noise standard deviation
+    noise_theta: float        =        0.05  # OU noise reversion rate    
 
 
 
@@ -789,7 +784,7 @@ class DDPG:
 
                 
             
-            for _ in range(0,30):
+            for _ in range(0,10):
                 # Perform learning step
                 if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
                     self.learn()
