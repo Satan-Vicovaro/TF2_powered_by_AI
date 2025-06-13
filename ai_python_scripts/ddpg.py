@@ -350,7 +350,7 @@ class Enviroment:
             
             # angle between shooter ---> missile and shooter ---> target
             cosine_angle = torch.dot(v_shooter_missile, v_shooter_target[i]) / (v_shooter_missile.norm() * v_shooter_target[i].norm())
-            rewards[i] = cosine_angle 
+            rewards[i] = cosine_angle**3 # ^3 to make it more steep
 
             if s_bot.damage_dealt > 0:
                 rewards[i] *= 2 #aditional reward for hiting target
@@ -490,9 +490,9 @@ class DDPGConfig:
     verbose: bool             =        True  # Verbose printing
     total_steps: int          =     100_000  # Total training steps
     target_reward: int | None =        2000  # Target reward used for early stopping
-    learning_starts: int      =         100  # Begin learning after this many steps
+    learning_starts: int      =         300  # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
-    lr: float                 =        0.e-4 # Learning rate
+    lr: float                 =        0.01 # Learning rate
     hidden_dim: int           =         128  # Actor and critic network hidden dim
     buffer_capacity: int      =     100_000  # Maximum replay buffer capacity
     batch_size: int           =           20 # Batch size used by learner
@@ -636,10 +636,14 @@ class DDPG:
         self.device = config.device
         
 
+
         self.env = env
         action_space, observation_space= self.env.get_observation_and_action_spaces()
         
         self.actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(self.device)
+
+        #torch.load("models/DDPG_TF2-missile-learner_25000.pth",self.actor.state_dict())
+
         self.target_actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(self.device)
         self.soft_update(self.actor, self.target_actor, 1.0)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=config.lr)
@@ -784,10 +788,10 @@ class DDPG:
 
                 
             
-            for _ in range(0,10):
-                # Perform learning step
-                if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
-                    self.learn()
+            #for _ in range(0,):
+            # Perform learning step
+            if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
+                self.learn()
 
             # Reset environment and noise if episode ended
             if terminated.any() or truncated.any():
@@ -808,7 +812,7 @@ class DDPG:
                 mean_reward = np.mean(logger.episode_returns[-20:])
                 if mean_reward >= self.config.target_reward:
                     if self.config.verbose:
-                        print("\nTarget reward achieved. Training stopped.")
+                        print("\nTarget reward achieved!")
                     #break
 
         # Training ended
