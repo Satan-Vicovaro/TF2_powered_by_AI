@@ -23,6 +23,7 @@ class ActorNetwork(nn.Module):
         self.network = nn.Sequential(
             nn.Linear(np.prod(observation_space.shape),  hidden_dim),
             nn.ReLU(),
+            nn.BatchNorm1d(hidden_dim),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, np.prod(action_space.shape)),
@@ -273,7 +274,7 @@ class Enviroment:
         return data
 
 
-    def step(self, angles, observations):
+    def step(self, angles, observations, iteration):
         """
             the evaluation of the function,
             returns:
@@ -303,7 +304,7 @@ class Enviroment:
 
         rewards = self.evaluate(angles, observations)
 
-        if self.iteration % 1 == 0:
+        if iteration % 1 == 0:
             # next positions
             self.player_input_messages.put("change_target_pos|") 
             gl.send_message.set()
@@ -324,8 +325,6 @@ class Enviroment:
 
 
         self.reset_damage_dealt()
-        self.iteration += 1
-        lg.logger.info("Iteration: " + str(self.iteration))
 
         return next_observation, rewards, torch.zeros_like(rewards,dtype=torch.bool), torch.zeros_like(rewards,dtype=torch.bool)
 
@@ -350,7 +349,7 @@ class Enviroment:
             
             # angle between shooter ---> missile and shooter ---> target
             cosine_angle = torch.dot(v_shooter_missile, v_shooter_target[i]) / (v_shooter_missile.norm() * v_shooter_target[i].norm())
-            rewards[i] = cosine_angle**3 # ^3 to make it more steep
+            rewards[i] = (cosine_angle**3) # ^3 to make it more steep
 
             if s_bot.damage_dealt > 0:
                 rewards[i] *= 2 #aditional reward for hiting target
@@ -489,18 +488,20 @@ class DDPGConfig:
     num_checkpoints: int      =          20  # Number of checkpoints/printing logs to create
     verbose: bool             =        True  # Verbose printing
     total_steps: int          =     100_000  # Total training steps
-    target_reward: int | None =        2000  # Target reward used for early stopping
-    learning_starts: int      =         300  # Begin learning after this many steps
+    target_reward: int | None =          500  # Target reward used for early stopping
+    learning_starts: int      =         10 # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
-    lr: float                 =        0.01 # Learning rate
+    lr: float                 =       0.001 # Learning rate
     hidden_dim: int           =         128  # Actor and critic network hidden dim
     buffer_capacity: int      =     100_000  # Maximum replay buffer capacity
-    batch_size: int           =           20 # Batch size used by learner
-    num_steps: int            =           4  # Number of steps to unroll Bellman equation by
+    batch_size: int           =          32  # Batch size used by learner
+    num_steps: int            =           1  # Number of steps to unroll Bellman equation by
     tau: float                =       0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float     =        40.0  # Global gradient clipping value
-    noise_sigma: float        =         0.10 # OU noise standard deviation
+    noise_sigma: float        =        0.05  # OU noise standard deviation
+    min_noise_sigma:float     =        0.01  
     noise_theta: float        =        0.05  # OU noise reversion rate    
+    min_noise_theta: float    =        0.01  
 
 
 
@@ -634,15 +635,16 @@ class DDPG:
     def __init__(self, env:Enviroment):
         config = DDPGConfig()
         self.device = config.device
-        
 
-
+        self.iteration = 1
+        self.pitch_angle_cap = -5
+        self.pitch_max = -70
         self.env = env
         action_space, observation_space= self.env.get_observation_and_action_spaces()
         
         self.actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(self.device)
-
-        #torch.load("models/DDPG_TF2-missile-learner_25000.pth",self.actor.state_dict())
+        if gl.load_neural_network:
+            torch.load("models/DDPG_TF2-missile-learner_25000.pth",self.actor.state_dict())
 
         self.target_actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(self.device)
         self.soft_update(self.actor, self.target_actor, 1.0)
@@ -687,12 +689,22 @@ class DDPG:
     def select_action(self, observation, add_noise=False):
         "Selects an action using the current policy with optional noise."
         with torch.no_grad():
-            observation_tensor = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+            #print("Observation: ", observation.shape)
+            observation_tensor = torch.tensor(observation, dtype=torch.float32, device=self.device)
             action = self.actor(observation_tensor).squeeze(0)
             if add_noise:
                 noise = self.noise_generator.sized_sample(len(action)).to(self.device)
                 noise *= self.actor.action_scale
                 action = torch.clamp(action + noise, min=-self.actor.action_scale*2, max=self.actor.action_scale*2)
+
+                # action = torch.clamp(action,min=torch.tensor([0, self.pitch_angle_cap]),max=torch.tensor([720,10]))
+                
+                # if self.iteration % 1000 == 0:
+                #     self.pitch_angle_cap = max(self.pitch_max,self.pitch_angle_cap - 3)
+
+                if self.iteration %500 ==0:
+                    self.noise_generator.sigma = max(self.config.min_noise_sigma, self.noise_generator.sigma - 0.01)
+            
             return action.cpu().numpy()
 
 
@@ -775,7 +787,7 @@ class DDPG:
                 actions = self.env.random_action()
                 
             # Environment step
-            next_observations, rewards, terminated, truncated = self.env.step(actions,observations)
+            next_observations, rewards, terminated, truncated = self.env.step(actions,observations, self.iteration)
             
             # Update logs
             #logger.log(reward, terminated, truncated)
@@ -788,10 +800,10 @@ class DDPG:
 
                 
             
-            #for _ in range(0,):
-            # Perform learning step
-            if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
-                self.learn()
+            for _ in range(0,100):
+                # Perform learning step
+                if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
+                    self.learn()
 
             # Reset environment and noise if episode ended
             if terminated.any() or truncated.any():
@@ -814,6 +826,9 @@ class DDPG:
                     if self.config.verbose:
                         print("\nTarget reward achieved!")
                     #break
+
+            lg.logger.info("Iteration: " + str(self.iteration))
+            self.iteration +=1
 
         # Training ended
         if self.config.verbose:
