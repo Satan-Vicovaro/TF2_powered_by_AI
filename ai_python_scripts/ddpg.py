@@ -4,7 +4,7 @@ from torch import nn
 
 import random
 from collections import deque
-
+from datetime import datetime
 
 import torch
 from torch import nn
@@ -231,6 +231,11 @@ class Enviroment:
         self.player_input_messages:Queue = Queue()          
         self.restart_count = 0
         self.iteration = 0
+        self.accuracy_logger = []
+        self.avg_reward_logger = []
+        self.sum_reward_logger = []
+        self.logger_dir_name = datetime.now().strftime("%H:%M")
+
         self.tf_listener = threading.Thread(target = sq.tf2_listener_and_sender, args = (self.player_input_messages,self.bots, ), daemon = True)
         self.user_listener = threading.Thread(target = user_input_listener, args = (self.player_input_messages, ), daemon = True)
 
@@ -336,8 +341,8 @@ class Enviroment:
     def evaluate(self,angles, observations:torch.Tensor):
         
 
-        # proper evaluation function that uses ⭐️real math⭐️ to calculate proper value
-        # value is in range [-1, 2] 
+        # proper evaluation function which uses ⭐️real math⭐️ to calculate proper rewards
+        # value is in range [-1, 3] 
         rewards = torch.zeros((angles.shape[0]))
 
         s_pos, t_pos = observations.split(3,dim=1)
@@ -349,15 +354,14 @@ class Enviroment:
             
             # angle between shooter ---> missile and shooter ---> target
             cosine_angle = torch.dot(v_shooter_missile, v_shooter_target[i]) / (v_shooter_missile.norm() * v_shooter_target[i].norm())
-            rewards[i] = (cosine_angle**3) # ^3 to make it more steep
+            rewards[i] = (cosine_angle**3) # ^3 to make it steeper
 
             if s_bot.damage_dealt > 0:
-                rewards[i] *= 2 #aditional reward for hiting target
+                rewards[i] *= 3 #aditional reward for hiting target
 
-        lg.logger.debug(rewards)
-        lg.logger.info("Average reward: {0:.2f}".format(rewards.mean()))
-        lg.logger.info("Sum of rewards: {0:.2f}".format(rewards.sum()))
-        return rewards #(rewards - rewards.mean()) / (rewards.std() + 1e-8) #normalized
+
+        self.show_and_update_logs(rewards)
+        return rewards 
 
 
     def random_action(self):
@@ -479,30 +483,82 @@ class Enviroment:
 
         return torch.tensor([(bot.pos_x, bot.pos_y, bot.pos_z, t_bot.pos_x, t_bot.pos_y,t_bot.pos_z) for bot in self.s_bots.values()], dtype=torch.float32)
     
+    def show_and_update_logs(self, rewards:torch.Tensor):
+        
+        lg.logger.debug(rewards)
+        
+        lg.logger.info("Average reward: {0:.2f}".format(rewards.mean()))
+        self.avg_reward_logger.append("{0:.2f}".format(rewards.mean()))
+
+        lg.logger.info("Sum of rewards: {0:.2f}".format(rewards.sum()))
+        self.sum_reward_logger.append("{0:.2f}".format(rewards.sum()))
+
+        hit_counter = 0
+        for s_bot in self.s_bots.values():
+            if s_bot.damage_dealt > 0:
+                hit_counter += 1
+        
+        lg.logger.info("Accuracy: {0:.2f}".format(hit_counter / len(self.s_bots)))
+        self.accuracy_logger.append("{0:.2f}".format(hit_counter / len(self.s_bots)))
+    
+
+    def checkpoint_save_logs(self):
+        Enviroment.create_dir(self.logger_dir_name)
+
+        Enviroment.save_data_to_file(str(self.accuracy_logger),"statistics_and_data/" + self.logger_dir_name + "/accuracy")
+        Enviroment.save_data_to_file(str(self.avg_reward_logger),"statistics_and_data/" + self.logger_dir_name + "/avg_reward")
+        Enviroment.save_data_to_file(str(self.sum_reward_logger),"statistics_and_data/" + self.logger_dir_name + "/sum_reward")
+
+    @staticmethod
+    def get_next_filename(base_name="file", extension=".txt"):
+        index = 1
+        while True:
+            filename = f"{base_name}_{index}{extension}"
+            if not os.path.exists(filename):
+                return filename
+            index += 1
+    
+    @staticmethod
+    def save_data_to_file(data, file_name):
+            with open(file_name, "w") as file:
+                file.write(data)
+            lg.logger.info(f"Data saved to {file_name}")
+    
+    @staticmethod
+    def create_dir(name):
+        os.makedirs("statistics_and_data/" + name, exist_ok = True)
+    
+
+
+    
+    
 
 class DDPGConfig:
     env_name: str             = 'TF2-missile-learner'  # Environment name
     agent_name: str           =      'DDPG'  # Agent name
     device: str               =       'cpu'  # Torch device
     checkpoint: bool          =       True   # Periodically save model weights
-    num_checkpoints: int      =          20  # Number of checkpoints/printing logs to create
+    num_checkpoints: int      =          40  # Number of checkpoints/printing logs to create
     verbose: bool             =        True  # Verbose printing
     total_steps: int          =     100_000  # Total training steps
-    target_reward: int | None =          500  # Target reward used for early stopping
-    learning_starts: int      =         10 # Begin learning after this many steps
+    target_reward: int | None =           2  # Target reward used for early stopping
+    learning_starts: int      =         2000 # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
-    lr: float                 =       0.001 # Learning rate
+    lr: float                 =       0.005  # Learning rate
     hidden_dim: int           =         128  # Actor and critic network hidden dim
     buffer_capacity: int      =     100_000  # Maximum replay buffer capacity
     batch_size: int           =          32  # Batch size used by learner
     num_steps: int            =           1  # Number of steps to unroll Bellman equation by
     tau: float                =       0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float     =        40.0  # Global gradient clipping value
-    noise_sigma: float        =        0.05  # OU noise standard deviation
+    
+    noise_sigma: float        =        0.30  # OU noise standard deviation
+    sigma_decrease_coef:float =        0.01
     min_noise_sigma:float     =        0.01  
+   
     noise_theta: float        =        0.05  # OU noise reversion rate    
     min_noise_theta: float    =        0.01  
-
+    theta_decrease_coef:float =        0.001
 
 
 
@@ -639,6 +695,8 @@ class DDPG:
         self.iteration = 1
         self.pitch_angle_cap = -5
         self.pitch_max = -70
+
+
         self.env = env
         action_space, observation_space= self.env.get_observation_and_action_spaces()
         
@@ -702,7 +760,7 @@ class DDPG:
                 # if self.iteration % 1000 == 0:
                 #     self.pitch_angle_cap = max(self.pitch_max,self.pitch_angle_cap - 3)
 
-                if self.iteration %500 ==0:
+                if self.iteration % 500 ==0:
                     self.noise_generator.sigma = max(self.config.min_noise_sigma, self.noise_generator.sigma - 0.01)
             
             return action.cpu().numpy()
@@ -799,8 +857,7 @@ class DDPG:
                 self.buffer.add((observations[i], actions[i], rewards[i], next_observations[i], terminated[i], truncated[i]))
 
                 
-            
-            for _ in range(0,100):
+            for _ in range(0,2):
                 # Perform learning step
                 if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
                     self.learn()
@@ -818,7 +875,8 @@ class DDPG:
             # Save weights if checkpointing
             if self.config.checkpoint and step % logger.checkpoint_interval == 0:
                 self.checkpoint(step)
-                
+                self.env.checkpoint_save_logs()
+            
             # Check stopping condition
             if self.config.target_reward is not None and len(logger.episode_returns) >= 20:
                 mean_reward = np.mean(logger.episode_returns[-20:])
