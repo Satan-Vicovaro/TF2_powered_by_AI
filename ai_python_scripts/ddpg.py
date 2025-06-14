@@ -91,7 +91,7 @@ class OrnsteinUhlenbeckNoise:
     
     
 
-
+import pickle
 
 
 class ReplayBuffer:
@@ -160,7 +160,23 @@ class ReplayBuffer:
                     self.add((observations, actions,rewards, next_observations, False,False))
         except:
             lg.logger.warning("Error when loading from file: training_data_DDPG.csv")
-    
+
+    def dump_buffer(self, path):
+        try:
+            with open("statistics_and_data/" + path + "/queue_dump.pkl", "wb") as f:
+                pickle.dump(self.buffer, f)
+        except:
+            lg.logger.warning("Could not dump buffer")
+            return
+        finally:
+            lg.logger.info("Buffer dumped succesfully")
+
+    def load_dumped_buffer(self,path):
+        try:
+            with open("statistics_and_data" + path  + "/queue_dump.pkl", "rb") as f:
+                self.buffer = pickle.load(f)
+        except:
+            lg.logger.warning("Could not load dumped buffer")
 
 
 
@@ -295,7 +311,7 @@ class Enviroment:
         self.send_tensor_angles(angles)
 
         # wait for damage response,
-        time.sleep(1.25)
+        time.sleep(1.05)
 
         while True:
             should_restart = self.request_damage_data()
@@ -542,7 +558,7 @@ class DDPGConfig:
     verbose: bool             =        True  # Verbose printing
     total_steps: int          =     100_000  # Total training steps
     target_reward: int | None =           2  # Target reward used for early stopping
-    learning_starts: int      =         2000 # Begin learning after this many steps
+    learning_starts: int      =         1 # Begin learning after this many steps
     gamma: float              =        0.99  # Discount factor
     lr: float                 =       0.005  # Learning rate
     hidden_dim: int           =         128  # Actor and critic network hidden dim
@@ -553,7 +569,7 @@ class DDPGConfig:
     grad_norm_clip: float     =        40.0  # Global gradient clipping value
     
     noise_sigma: float        =        0.30  # OU noise standard deviation
-    sigma_decrease_coef:float =        0.01
+    sigma_decrease_coef:float =        0.05
     min_noise_sigma:float     =        0.01  
    
     noise_theta: float        =        0.05  # OU noise reversion rate    
@@ -701,8 +717,8 @@ class DDPG:
         action_space, observation_space= self.env.get_observation_and_action_spaces()
         
         self.actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(self.device)
-        if gl.load_neural_network:
-            torch.load("models/DDPG_TF2-missile-learner_25000.pth",self.actor.state_dict())
+        # if gl.load_neural_network:
+        #    torch.load("models/DDPG_TF2-missile-learner_25000.pth",self.actor.state_dict())
 
         self.target_actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(self.device)
         self.soft_update(self.actor, self.target_actor, 1.0)
@@ -761,7 +777,7 @@ class DDPG:
                 #     self.pitch_angle_cap = max(self.pitch_max,self.pitch_angle_cap - 3)
 
                 if self.iteration % 500 ==0:
-                    self.noise_generator.sigma = max(self.config.min_noise_sigma, self.noise_generator.sigma - 0.01)
+                    self.noise_generator.sigma = max(self.config.min_noise_sigma, self.noise_generator.sigma - self.config.sigma_decrease_coef)
             
             return action.cpu().numpy()
 
@@ -831,6 +847,8 @@ class DDPG:
         
         self.buffer.load_from_file_csv()
 
+        #self.buffer.load_dumped_buffer("/18:15")
+        
         # Reset environment
         observations = self.env.reset()
         
@@ -857,7 +875,7 @@ class DDPG:
                 self.buffer.add((observations[i], actions[i], rewards[i], next_observations[i], terminated[i], truncated[i]))
 
                 
-            for _ in range(0,2):
+            for _ in range(0,5):
                 # Perform learning step
                 if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
                     self.learn()
@@ -876,6 +894,7 @@ class DDPG:
             if self.config.checkpoint and step % logger.checkpoint_interval == 0:
                 self.checkpoint(step)
                 self.env.checkpoint_save_logs()
+                self.buffer.dump_buffer(self.env.logger_dir_name)
             
             # Check stopping condition
             if self.config.target_reward is not None and len(logger.episode_returns) >= 20:
