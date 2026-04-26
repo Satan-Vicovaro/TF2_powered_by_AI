@@ -1,6 +1,6 @@
-import threading 
+import threading
 
-#------------------------------------ thread flags -----------------------------------
+# ------------------------------------ thread flags -----------------------------------
 end_program = threading.Event()
 
 start_program = threading.Event()
@@ -15,5 +15,5 @@ received_bullet_data = threading.Event()
 
 load_neural_network = False
 
-POLLING_INTERVAL = 0.01 # in seconds [s]
-MAX_DURATION = 10 # seconds
+POLLING_INTERVAL = 0.01  # in seconds [s]
+MAX_DURATION = 10  # seconds
