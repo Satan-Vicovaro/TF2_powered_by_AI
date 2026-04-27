@@ -58,8 +58,8 @@ class Enviroment:
 
         # target bot randomization
         self.t_bot = torch.rand_like(self.t_bot)
-        multipliers = torch.tensor([10, 10, 50])
-        shifts = torch.tensor([-10.0, -10.0, 0.0])
+        multipliers = torch.tensor([2, 2, 2])
+        shifts = torch.tensor([-1.0, -1.0, -1.0])
         self.t_bot = (self.t_bot * multipliers) + shifts
 
         target_matrix = self.t_bot.repeat([self.s_bot_count, 1])
@@ -68,11 +68,11 @@ class Enviroment:
 
     def random_action(self):
         angles = torch.rand([self.s_bots.size(dim=0), 2])
-        print(angles)
-        multipliers = torch.tensor([360, 179])
-        shifts = torch.tensor([0, -90])
+        # print(angles)
+        multipliers = torch.tensor([2, 2])
+        shifts = torch.tensor([-1, -1])
         angles = (angles * multipliers) + shifts
-        print(angles)
+        # print(angles)
         return angles
 
     def step(self, angles, observations, iteration):
@@ -85,10 +85,13 @@ class Enviroment:
         truncated (timeout limit in training session)
         """
 
+        multipliers = torch.tensor([180.0, 90.0])
+        shifts = torch.tensor([180.0, 0.0])
+        real_angles = (angles * multipliers) + shifts
 
-        rewards = self.evaluate(angles, observations)
-        print(observations)
-        print(rewards)
+        rewards = self.evaluate(real_angles, observations)
+        # print(observations)
+        # print(rewards)
         # our observations are 1 step only
         next_observation = self.reset()
 

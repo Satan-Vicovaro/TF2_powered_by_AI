@@ -23,11 +23,10 @@ class ActorNetwork(nn.Module):
     def __init__(self, observation_space, action_space, hidden_dim):
         super().__init__()
 
-        # nn.BatchNorm1d(20) <--- this can be used inside nn
         self.network = nn.Sequential(
             nn.Linear(np.prod(observation_space.shape), hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.ReLU(),
-            nn.BatchNorm1d(hidden_dim),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, np.prod(action_space.shape)),
@@ -46,7 +45,7 @@ class ActorNetwork(nn.Module):
         # print("Input observation shape:", observation.shape)
 
         action = self.network(observation)
-        return action * self.action_scale + self.action_bias
+        return action
 
 
 class CriticNetwork(nn.Module):
@@ -278,7 +277,7 @@ class Enviroment:
         self.user_listener.join()
 
     def get_observation_and_action_spaces(self):
-        action_space = CustomActionSpace(high=np.array([360, 0]), low=np.array([0, -70]))
+        action_space = CustomActionSpace(high=np.array([360, 89]), low=np.array([0, -89]))
         observation_space = CustomActionSpace(
             np.array([100, 100, 100, 100, 100, 100]), np.array([-100, -100, -100, -100, -100, -100])
         )
@@ -573,9 +572,9 @@ class DDPGConfig:
     checkpoint: bool = True  # Periodically save model weights
     num_checkpoints: int = 40  # Number of checkpoints/printing logs to create
     verbose: bool = True  # Verbose printing
-    total_steps: int = 100_000  # Total training steps
+    total_steps: int = 50_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
-    learning_starts: int = 1  # Begin learning after this many steps
+    learning_starts: int = 2000  # Begin learning after this many steps
     gamma: float = 0.99  # Discount factor
     lr: float = 0.001  # Learning rate
     hidden_dim: int = 128  # Actor and critic network hidden dim
@@ -809,11 +808,11 @@ class DDPG:
             action = self.actor(observation_tensor).squeeze(0)
             if add_noise:
                 noise = self.noise_generator.sized_sample(len(action)).to(self.device)
-                noise *= self.actor.action_scale
+                # noise *= self.actor.action_scale
                 action = torch.clamp(
                     action + noise,
-                    min=-self.actor.action_scale * 2,
-                    max=self.actor.action_scale * 2,
+                    min=-1,
+                    max=1,
                 )
 
                 # action = torch.clamp(action,min=torch.tensor([0, self.pitch_angle_cap]),max=torch.tensor([720,10]))
@@ -977,7 +976,7 @@ class DDPG:
                 mean_reward = np.mean(logger.episode_returns[-20:])
                 if mean_reward >= self.config.target_reward:
                     if self.config.verbose:
-                        print("\nTarget reward achieved!")
+                      print("\nTarget reward achieved!")
                     # break
 
             lg.logger.info("Iteration: " + str(self.iteration))
