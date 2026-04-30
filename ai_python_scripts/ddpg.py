@@ -321,10 +321,14 @@ class Enviroment:
         shifts = torch.tensor([180.0, 0.0])
         real_angles = (angles * multipliers) + shifts
 
+        for i, _ in enumerate(self.s_bots):
+            shared_collector.append(f"{i}_Angle1", "{0:3.2f}".format(real_angles[i][0]))
+            shared_collector.append(f"{i}_Angle2", "{0:3.2f}".format(real_angles[i][1]))
+
         self.send_tensor_angles(real_angles)
 
         # wait for damage response,
-        time.sleep(1.05)
+        time.sleep(1.50)
 
         while True:
             should_restart = self.request_damage_data()
@@ -398,8 +402,8 @@ class Enviroment:
     def random_action(self):
         angles = torch.zeros(len(self.s_bots), 2)
         for i, bot in enumerate(self.s_bots):
-            angles[i][0] = torch.tensor(random.uniform(0, 360))
-            angles[i][1] = torch.tensor(random.uniform(-70, 0))
+            angles[i][0] = torch.tensor(random.uniform(-1, 1))
+            angles[i][1] = torch.tensor(random.uniform(-1, 1))
         return angles
 
     def request_bullet_data(self):
@@ -522,9 +526,11 @@ class Enviroment:
 
         lg.logger.info("Average reward: {0:.2f}".format(rewards.mean()))
         self.avg_reward_logger.append("{0:.2f}".format(rewards.mean()))
+        shared_collector.append("Average_reward", "{0:.2f}".format(rewards.mean()))
 
         lg.logger.info("Sum of rewards: {0:.2f}".format(rewards.sum()))
         self.sum_reward_logger.append("{0:.2f}".format(rewards.sum()))
+        shared_collector.append("Sum_reward", "{0:.2f}".format(rewards.mean()))
 
         hit_counter = 0
         for s_bot in self.s_bots.values():
@@ -532,6 +538,7 @@ class Enviroment:
                 hit_counter += 1
 
         lg.logger.info("Accuracy: {0:.2f}".format(hit_counter / len(self.s_bots)))
+        shared_collector.append("Hit_counter", "{0:.2f}".format(hit_counter / len(self.s_bots)))
         self.accuracy_logger.append("{0:.2f}".format(hit_counter / len(self.s_bots)))
 
     def checkpoint_save_logs(self):
@@ -576,17 +583,17 @@ class DDPGConfig:
     checkpoint: bool = True  # Periodically save model weights
     num_checkpoints: int = 40  # Number of checkpoints/printing logs to create
     verbose: bool = False  # Verbose printing
-    total_steps: int = 100_000  # Total training steps
+    total_steps: int = 30_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
     learning_starts: int = 2000  # Begin learning after this many steps
     gamma: float = 0.99  # Discount factor
-    lr: float = 0.005  # Learning rate
-    hidden_dim: int = 64  # Actor and critic network hidden dim
+    lr: float = 0.01  # Learning rate
+    hidden_dim: int = 32  # Actor and critic network hidden dim
     buffer_capacity: int = 50_000  # Maximum replay buffer capacity
-    batch_size: int = 64  # Batch size used by learner
+    batch_size: int = 32  # Batch size used by learner
     num_steps: int = 1  # Number of steps to unroll Bellman equation by
     tau: float = 0.005  # Soft target network update interpolation coefficient
-    grad_norm_clip: float = 100.0  # Global gradient clipping value
+    grad_norm_clip: float = 40.0  # Global gradient clipping value
 
     noise_sigma: float = 0.50  # OU noise standard deviation
     sigma_decrease_coef: float = 0.01
@@ -612,7 +619,8 @@ class Logger:
         self.start_time = time.time()
         self.total_steps = total_steps
         self.num_checkpoints = num_checkpoints
-        self.checkpoint_interval = max(1, self.total_steps // self.num_checkpoints)
+        # self.checkpoint_interval = max(1, self.total_steps // self.num_checkpoints)
+        self.checkpoint_interval = 10
         self.last_checkpoint_time = self.start_time
         self.last_checkpoint_step = 0
         self.header_printed = False
@@ -742,7 +750,7 @@ class DDPG:
             self.device
         )
         if gl.load_neural_network:
-            torch.load("models/DDPG_TF2-missile-learner_2500_00:06.pth", self.actor.state_dict())
+            torch.load("models/DDPG_TF2-missile-learner_70000.pth", self.actor.state_dict())
 
         self.target_actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(
             self.device
@@ -971,6 +979,7 @@ class DDPG:
             # Save weights if checkpointing
             if self.config.checkpoint and step % logger.checkpoint_interval == 0:
                 self.checkpoint(step)
+                shared_collector.save_data()
                 # self.env.checkpoint_save_logs()
                 # self.buffer.dump_buffer(self.env.logger_dir_name)
 
@@ -1003,7 +1012,7 @@ def main():
     # start program
     gl.start_program.wait()
 
-    ddbg = DDPG(dummy_env)
+    ddbg = DDPG(tf2_env)
     ddbg.train()
 
 
