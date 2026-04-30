@@ -15,8 +15,8 @@ import time
 import numpy as np
 import csv
 
+from data_collector import shared_collector, Severity
 from dummy_enviroment import Enviroment as DummyEnviroment
-
 
 
 class ActorNetwork(nn.Module):
@@ -571,18 +571,18 @@ class DDPGConfig:
     device: str = "cpu"  # Torch device
     checkpoint: bool = True  # Periodically save model weights
     num_checkpoints: int = 40  # Number of checkpoints/printing logs to create
-    verbose: bool = True  # Verbose printing
-    total_steps: int = 50_000  # Total training steps
+    verbose: bool = False  # Verbose printing
+    total_steps: int = 30_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
     learning_starts: int = 2000  # Begin learning after this many steps
     gamma: float = 0.99  # Discount factor
-    lr: float = 0.001  # Learning rate
-    hidden_dim: int = 128  # Actor and critic network hidden dim
-    buffer_capacity: int = 200_000  # Maximum replay buffer capacity
+    lr: float = 0.003  # Learning rate
+    hidden_dim: int = 64  # Actor and critic network hidden dim
+    buffer_capacity: int = 50_000  # Maximum replay buffer capacity
     batch_size: int = 64  # Batch size used by learner
     num_steps: int = 1  # Number of steps to unroll Bellman equation by
-    tau: float = 0.005  # Soft target network update interpolation coefficient
-    grad_norm_clip: float = 40.0  # Global gradient clipping value
+    tau: float = 0.01  # Soft target network update interpolation coefficient
+    grad_norm_clip: float = 100.0  # Global gradient clipping value
 
     noise_sigma: float = 0.50  # OU noise standard deviation
     sigma_decrease_coef: float = 0.01
@@ -907,16 +907,16 @@ class DDPG:
             total_steps=self.config.total_steps, num_checkpoints=self.config.num_checkpoints
         )
 
-        self.buffer.load_from_file_csv()
-
-        self.buffer.load_dumped_buffer("/18:24")
+        # self.buffer.load_from_file_csv()
+        #
+        # self.buffer.load_dumped_buffer("/18:24")
 
         # Reset environment
         observations = self.env.reset()
 
         # Main training loop
         for step in range(1, self.config.total_steps + 1):
-
+            shared_collector.next_iteration()
             # Select action
             if step > self.config.learning_starts:
                 actions = self.select_action(observations, add_noise=True)
@@ -967,20 +967,22 @@ class DDPG:
             # Save weights if checkpointing
             if self.config.checkpoint and step % logger.checkpoint_interval == 0:
                 pass
-                #self.checkpoint(step)
-                #self.env.checkpoint_save_logs()
-                #self.buffer.dump_buffer(self.env.logger_dir_name)
+                # self.checkpoint(step)
+                # self.env.checkpoint_save_logs()
+                # self.buffer.dump_buffer(self.env.logger_dir_name)
 
             # Check stopping condition
             if self.config.target_reward is not None and len(logger.episode_returns) >= 20:
                 mean_reward = np.mean(logger.episode_returns[-20:])
                 if mean_reward >= self.config.target_reward:
                     if self.config.verbose:
-                      print("\nTarget reward achieved!")
+                        print("\nTarget reward achieved!")
                     # break
 
-            lg.logger.info("Iteration: " + str(self.iteration))
             self.iteration += 1
+
+            if self.iteration % 500 == 0:
+                shared_collector.print_interation_data()
 
         # Training ended
         if self.config.verbose:

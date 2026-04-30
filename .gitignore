@@ -7,3 +7,4 @@ Accuracy.txt
 Rewards_sum.txt
 venv/*
 models/* 
+.idea/*

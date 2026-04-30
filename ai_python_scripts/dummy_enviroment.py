@@ -9,6 +9,8 @@ import TfBot as tf
 import logger as lg
 from squirrel_api import tf2_listener_and_sender
 
+from data_collector import shared_collector, Severity
+
 
 class CustomActionSpace:
     "Parameters that descibes our inputs and outputs"
@@ -146,10 +148,12 @@ class Enviroment:
 
         lg.logger.debug(rewards)
 
-        lg.logger.info("Average reward: {0:.2f}".format(rewards.mean()))
+        shared_collector.append("Average_reward", "{0:.2f}".format(rewards.mean()))
+
         self.avg_reward_logger.append("{0:.2f}".format(rewards.mean()))
 
-        lg.logger.info("Sum of rewards: {0:.2f}".format(rewards.sum()))
+        shared_collector.append("Sum_reward", "{0:.2f}".format(rewards.sum()))
+
         self.sum_reward_logger.append("{0:.2f}".format(rewards.sum()))
 
         # hit_counter = 0
