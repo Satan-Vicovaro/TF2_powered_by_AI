@@ -15,7 +15,7 @@ import time
 import numpy as np
 import csv
 
-from data_collector import shared_collector, Severity
+from data_collector import DataCollector, shared_collector, Severity
 from dummy_enviroment import Enviroment as DummyEnviroment
 
 
@@ -220,6 +220,17 @@ def user_input_listener(player_input_messages: Queue):
                 lg.enable_debug()
             elif user_input.lower() == "debug off":
                 lg.disable_debug()
+            elif user_input.lower() == "plot data":
+                # warining this might fail ploting should be on main thread
+                threading.Thread(target=lambda: shared_collector.plot_data(), daemon=True).start()
+            elif user_input.lower() == "plot file":
+                # warining this might fail ploting should be on main thread
+                def thread_task():
+                    new_collector = DataCollector()
+                    new_collector.load_data()
+                    new_collector.plot_data()
+
+                threading.Thread(target=thread_task(), daemon=True).start()
             else:
                 player_input_messages.put(user_input + " |")
 
@@ -279,7 +290,7 @@ class Enviroment:
     def get_observation_and_action_spaces(self):
         action_space = CustomActionSpace(high=np.array([360, 89]), low=np.array([0, -89]))
         observation_space = CustomActionSpace(
-            np.array([100, 100, 100, 100, 100, 100]), np.array([-100, -100, -100, -100, -100, -100])
+            np.array([1, 1, 1, 1, 1, 1]), np.array([-1, -1, -1, -1, -1, -1])
         )
         return action_space, observation_space
 
@@ -585,15 +596,15 @@ class DDPGConfig:
     verbose: bool = False  # Verbose printing
     total_steps: int = 30_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
-    learning_starts: int = 2000  # Begin learning after this many steps
+    learning_starts: int = 5000  # Begin learning after this many steps
     gamma: float = 0.99  # Discount factor
-    lr: float = 0.01  # Learning rate
-    hidden_dim: int = 32  # Actor and critic network hidden dim
+    lr: float = 0.001  # Learning rate
+    hidden_dim: int = 64  # Actor and critic network hidden dim
     buffer_capacity: int = 50_000  # Maximum replay buffer capacity
-    batch_size: int = 32  # Batch size used by learner
+    batch_size: int = 32 * 4  # Batch size used by learner
     num_steps: int = 1  # Number of steps to unroll Bellman equation by
     tau: float = 0.005  # Soft target network update interpolation coefficient
-    grad_norm_clip: float = 40.0  # Global gradient clipping value
+    grad_norm_clip: float = 1000.0  # Global gradient clipping value
 
     noise_sigma: float = 0.50  # OU noise standard deviation
     sigma_decrease_coef: float = 0.01
@@ -619,15 +630,15 @@ class Logger:
         self.start_time = time.time()
         self.total_steps = total_steps
         self.num_checkpoints = num_checkpoints
-        # self.checkpoint_interval = max(1, self.total_steps // self.num_checkpoints)
-        self.checkpoint_interval = 10
+        self.checkpoint_interval = max(1, self.total_steps // self.num_checkpoints)
+        # self.checkpoint_interval = 10
         self.last_checkpoint_time = self.start_time
         self.last_checkpoint_step = 0
         self.header_printed = False
 
         # Logger settings
-        self.log_interval = 1  # Print logs every log_interval timesteps
-        self.window = 20  # Use this many items from recent logs
+        self.log_interval = 100  # Print logs every log_interval timesteps
+        self.window = 100  # Use this many items from recent logs
 
     def log(self, reward: float, termination: bool, truncation: bool, **kwargs):
         "Updates logger with latest rewards, done flags and any custom logs."
@@ -961,7 +972,7 @@ class DDPG:
                     )
                 )
 
-            # for _ in range(0, 100):
+            # for _ in range(0, 10):
             # Perform learning step
             if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
                 self.learn()
@@ -1012,7 +1023,7 @@ def main():
     # start program
     gl.start_program.wait()
 
-    ddbg = DDPG(tf2_env)
+    ddbg = DDPG(dummy_env)
     ddbg.train()
 
 

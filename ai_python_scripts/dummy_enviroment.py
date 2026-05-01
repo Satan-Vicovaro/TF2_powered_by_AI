@@ -56,16 +56,19 @@ class Enviroment:
         Resets our enviroment and gets initial position,
         in our case we just send next random position
         """
-        self.s_bots = torch.randn_like(self.s_bots)
+        self.s_bots = torch.rand([self.s_bot_count, 3])
+        self.t_bot = torch.rand([1, 3])
 
-        # target bot randomization
-        self.t_bot = torch.rand_like(self.t_bot)
-        multipliers = torch.tensor([2, 2, 2])
+        multipliers = torch.tensor([2.0, 2.0, 2.0])
         shifts = torch.tensor([-1.0, -1.0, -1.0])
+
+        self.s_bots = (self.s_bots * multipliers) + shifts
         self.t_bot = (self.t_bot * multipliers) + shifts
 
-        target_matrix = self.t_bot.repeat([self.s_bot_count, 1])
+        target_matrix = self.t_bot.expand(self.s_bot_count, 3)
+
         observations = torch.cat((self.s_bots, target_matrix), dim=1)
+
         return observations
 
     def random_action(self):
@@ -116,7 +119,7 @@ class Enviroment:
         s_pos, t_pos = observations.split(3, dim=1)
 
         yaw_rad = torch.deg2rad(angles[:, 0])
-        pitch_rad = torch.deg2rad(angles[:, 1])
+        pitch_rad = torch.deg2rad(-angles[:, 1])
 
         # Convert Spherical Angles to a 3D Direction Vector (d)
         # Note: Udjust it to the TF2 coordinates
@@ -137,7 +140,7 @@ class Enviroment:
 
         distances = torch.norm(t_pos - closest_point, dim=1)
 
-        sigma = 0.4  # tunable
+        sigma = 1  # tunable
         # bell curve
         rewards = torch.exp(-(distances**2) / sigma**2)
 
