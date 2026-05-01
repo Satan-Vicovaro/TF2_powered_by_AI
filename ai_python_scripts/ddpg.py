@@ -231,6 +231,16 @@ def user_input_listener(player_input_messages: Queue):
                     new_collector.plot_data()
 
                 threading.Thread(target=thread_task(), daemon=True).start()
+            elif user_input.lower() == "dummy":
+                lg.logger.info("Set dummy env")
+                gl.enviroment_type = "dummy"
+            elif user_input.lower() == "normal":
+                lg.logger.info("Set normal env")
+                gl.enviroment_type = "normal"
+            elif user_input.lower() == "help":
+                lg.logger.info(
+                    "Options: start \n load nn \n debug on \n debug off \n plot data \n plot file \n dummy \n normal \n help \n"
+                )
             else:
                 player_input_messages.put(user_input + " |")
 
@@ -352,6 +362,8 @@ class Enviroment:
                 break
 
         rewards = self.evaluate(angles, observations)
+        dummy = DummyEnviroment()
+        dummy_rewards = dummy.evaluate(angles, observations)
 
         if iteration % 1 == 0:
             # next positions
@@ -596,12 +608,12 @@ class DDPGConfig:
     verbose: bool = False  # Verbose printing
     total_steps: int = 30_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
-    learning_starts: int = 5000  # Begin learning after this many steps
+    learning_starts: int = 10  # Begin learning after this many steps
     gamma: float = 0.99  # Discount factor
     lr: float = 0.001  # Learning rate
     hidden_dim: int = 64  # Actor and critic network hidden dim
     buffer_capacity: int = 50_000  # Maximum replay buffer capacity
-    batch_size: int = 32 * 4  # Batch size used by learner
+    batch_size: int = 32 * 2  # Batch size used by learner
     num_steps: int = 1  # Number of steps to unroll Bellman equation by
     tau: float = 0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float = 1000.0  # Global gradient clipping value
@@ -760,13 +772,11 @@ class DDPG:
         self.actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(
             self.device
         )
-        if gl.load_neural_network:
-            torch.load("models/DDPG_TF2-missile-learner_70000.pth", self.actor.state_dict())
 
         self.target_actor = ActorNetwork(observation_space, action_space, config.hidden_dim).to(
             self.device
         )
-        self.soft_update(self.actor, self.target_actor, 1.0)
+        # self.soft_update(self.actor, self.target_actor, 1.0)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=config.lr)
 
         self.critic = CriticNetwork(observation_space, action_space, config.hidden_dim).to(
@@ -775,7 +785,7 @@ class DDPG:
         self.target_critic = CriticNetwork(observation_space, action_space, config.hidden_dim).to(
             self.device
         )
-        self.soft_update(self.critic, self.target_critic, 1.0)
+        # self.soft_update(self.critic, self.target_critic, 1.0)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=config.lr)
 
         self.buffer = ReplayBuffer(config.buffer_capacity, config.num_steps, config.gamma)
@@ -786,6 +796,20 @@ class DDPG:
             theta=config.noise_theta,
         )
         self.config = config
+
+        if gl.load_neural_network:
+            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_30000.pth")
+            self.actor.load_state_dict(checkpoint_data["actor"])
+            self.critic.load_state_dict(checkpoint_data["critic"])
+
+            self.soft_update(self.actor, self.target_actor, 1.0)
+            self.soft_update(self.critic, self.target_critic, 1.0)
+
+            if "actor_optimizer" in checkpoint_data:
+                self.actor_optimizer.load_state_dict(checkpoint_data["actor_optimizer"])
+                self.critic_optimizer.load_state_dict(checkpoint_data["critic_optimizer"])
+
+            self.noise_generator.sigma = self.config.min_noise_sigma
 
     def update_file_DDPG(
         self,
@@ -816,7 +840,14 @@ class DDPG:
         if not os.path.exists("models"):
             os.makedirs("models")
         checkpoint_path = f"models/{self.config.agent_name}_{self.config.env_name}_{steps}.pth"
-        torch.save(self.actor.state_dict(), checkpoint_path)
+
+        checkpoint_data = {
+            "actor": self.actor.state_dict(),
+            "critic": self.critic.state_dict(),
+            "actor_optimizer": self.actor_optimizer.state_dict(),
+            "critic_optimizer": self.critic_optimizer.state_dict(),
+        }
+        torch.save(checkpoint_data, checkpoint_path)
 
     def soft_update(self, online, target, tau):
         "Performs a soft update of the target network parameters."
@@ -1016,14 +1047,15 @@ class DDPG:
 
 
 def main():
-    tf2_env = Enviroment()
 
-    dummy_env = DummyEnviroment()
-
+    enviroment = Enviroment()
     # start program
     gl.start_program.wait()
 
-    ddbg = DDPG(dummy_env)
+    if gl.enviroment_type == "dummy":
+        enviroment = DummyEnviroment()
+
+    ddbg = DDPG(enviroment)
     ddbg.train()
 
 

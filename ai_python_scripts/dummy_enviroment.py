@@ -39,7 +39,8 @@ class Enviroment:
         self.logger_dir_name = datetime.datetime.now().strftime("%H:%M")
 
     def __del__(self):
-        os._exit(0)
+        pass
+        #os._exit(0)
 
     def get_observation_and_action_spaces(self):
         action_space = CustomActionSpace(
