@@ -15,6 +15,7 @@ import time
 import numpy as np
 import csv
 
+from user_listener import UserListener
 from data_collector import DataCollector, shared_collector, Severity
 from dummy_enviroment import Enviroment as DummyEnviroment
 
@@ -197,61 +198,6 @@ import threading
 import squirrel_api as sq
 
 
-def user_input_listener(player_input_messages: Queue):
-    lg.logger.info("listening for player input")
-
-    while not gl.end_program.is_set():
-        try:
-            user_input = input("[You] > ").strip()
-            if user_input.lower() == "exit":
-                gl.end_program.set()
-            elif user_input.lower() == "start":
-                player_input_messages.put("start |")
-                gl.send_message.set()
-                # watiging for squirrel to init it self
-                time.sleep(0.25)
-                gl.start_program.set()
-                continue
-            elif user_input.lower() == "load nn":
-                lg.logger.info("Neural network will be loaded from file")
-                gl.load_neural_network = True
-                continue
-            elif user_input.lower() == "debug on":
-                lg.enable_debug()
-            elif user_input.lower() == "debug off":
-                lg.disable_debug()
-            elif user_input.lower() == "plot data":
-                # warining this might fail ploting should be on main thread
-                threading.Thread(target=lambda: shared_collector.plot_data(), daemon=True).start()
-            elif user_input.lower() == "plot file":
-                # warining this might fail ploting should be on main thread
-                def thread_task():
-                    new_collector = DataCollector()
-                    new_collector.load_data()
-                    new_collector.plot_data()
-
-                threading.Thread(target=thread_task(), daemon=True).start()
-            elif user_input.lower() == "dummy":
-                lg.logger.info("Set dummy env")
-                gl.enviroment_type = "dummy"
-            elif user_input.lower() == "normal":
-                lg.logger.info("Set normal env")
-                gl.enviroment_type = "normal"
-            elif user_input.lower() == "help":
-                lg.logger.info(
-                    "Options: start \n load nn \n debug on \n debug off \n plot data \n plot file \n dummy \n normal \n help \n"
-                )
-            else:
-                player_input_messages.put(user_input + " |")
-
-            lg.logger.debug("User_listener: Got input form player")
-            gl.send_message.set()
-
-        except (KeyboardInterrupt, EOFError):
-            lg.logger.error("Keyboard error occured")
-            gl.end_program.set()
-
-
 class CustomActionSpace:
     "Parameters that descibes our inputs and outputs"
 
@@ -268,7 +214,6 @@ class Enviroment:
         self.bots: dict[np.int64, tf.TfBot] = dict()  # all of our bots
         self.t_bots: dict[np.int64, tf.TfBot] = dict()  # sub category: target bots
         self.s_bots: dict[np.int64, tf.TfBot] = dict()  # sub category: shooter bots
-        self.player_input_messages: Queue = Queue()
         self.restart_count = 0
         self.iteration = 0
         self.accuracy_logger = []
@@ -279,23 +224,16 @@ class Enviroment:
         self.tf_listener = threading.Thread(
             target=sq.tf2_listener_and_sender,
             args=(
-                self.player_input_messages,
+                gl.player_input_messages,
                 self.bots,
             ),
             daemon=True,
         )
-        self.user_listener = threading.Thread(
-            target=user_input_listener, args=(self.player_input_messages,), daemon=True
-        )
 
         self.tf_listener.start()
-        self.user_listener.start()
-        pass
 
     def __del__(self):
-        os._exit(0)
         self.tf_listener.join()
-        self.user_listener.join()
 
     def get_observation_and_action_spaces(self):
         action_space = CustomActionSpace(high=np.array([360, 89]), low=np.array([0, -89]))
@@ -342,10 +280,6 @@ class Enviroment:
         shifts = torch.tensor([180.0, 0.0])
         real_angles = (angles * multipliers) + shifts
 
-        for i, _ in enumerate(self.s_bots):
-            shared_collector.append(f"{i}_Angle1", "{0:3.2f}".format(real_angles[i][0]))
-            shared_collector.append(f"{i}_Angle2", "{0:3.2f}".format(real_angles[i][1]))
-
         self.send_tensor_angles(real_angles)
 
         # wait for damage response,
@@ -362,12 +296,12 @@ class Enviroment:
                 break
 
         rewards = self.evaluate(angles, observations)
-        dummy = DummyEnviroment()
-        dummy_rewards = dummy.evaluate(angles, observations)
+        # dummy = DummyEnviroment()
+        # dummy_rewards = dummy.evaluate(angles, observations)
 
         if iteration % 1 == 0:
             # next positions
-            self.player_input_messages.put("change_target_pos|")
+            gl.player_input_messages.put("change_target_pos|")
             gl.send_message.set()
             time.sleep(0.2)
 
@@ -431,7 +365,7 @@ class Enviroment:
 
     def request_bullet_data(self):
         # requesting bullets distances from target_bot
-        self.player_input_messages.put("send_distances|")
+        gl.player_input_messages.put("send_distances|")
         gl.send_message.set()
 
         lg.logger.debug("waiting for bullet data")
@@ -446,7 +380,7 @@ class Enviroment:
 
     def request_damage_data(self):
         # requesting damage data
-        self.player_input_messages.put("send_damage|")
+        gl.player_input_messages.put("send_damage|")
         gl.send_message.set()
 
         lg.logger.debug("waiting for damage data")
@@ -461,7 +395,7 @@ class Enviroment:
     def request_positions(self):
 
         # request data postion data
-        self.player_input_messages.put("get_position |")  # alway end message_type with "|"
+        gl.player_input_messages.put("get_position |")  # alway end message_type with "|"
         gl.send_message.set()
 
         lg.logger.debug("Waiting for positions")
@@ -485,7 +419,7 @@ class Enviroment:
         for i, bot_id in enumerate(self.s_bots.keys()):
             message += " {0} {1} {2}\n".format(bot_id, angles[i][0], angles[i][1])
 
-        self.player_input_messages.put(message)
+        gl.player_input_messages.put(message)
         gl.send_message.set()
 
     def send_angles(self, bots: dict[np.int64, tf.TfBot], player_input_messages: Queue):
@@ -798,7 +732,7 @@ class DDPG:
         self.config = config
 
         if gl.load_neural_network:
-            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_30000.pth")
+            checkpoint_data = torch.load("models/nauczony_mocno.pth")
             self.actor.load_state_dict(checkpoint_data["actor"])
             self.critic.load_state_dict(checkpoint_data["critic"])
 
@@ -1048,15 +982,23 @@ class DDPG:
 
 def main():
 
-    enviroment = Enviroment()
+    user_listener = UserListener()
+    user_listener.start()
+
     # start program
     gl.start_program.wait()
 
     if gl.enviroment_type == "dummy":
         enviroment = DummyEnviroment()
+    elif gl.enviroment_type == "normal":
+        enviroment = Enviroment()
+    else:
+        enviroment = Enviroment()
 
     ddbg = DDPG(enviroment)
     ddbg.train()
+
+    user_listener.stop()
 
 
 if __name__ == "__main__":
