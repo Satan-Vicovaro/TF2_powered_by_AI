@@ -157,15 +157,16 @@ class :: python_listener {
 			}
 		}
 
-		if (message_type == "change_shooter_pos" ) {
-			if (!FireScriptHook("Change_Pos", null)) {
+		if (message_type == "change_shooter_pos") {
+			local data = parts[1]  // "cx cy cz r"
+			local d = split(strip(data), " ")
+			if (!FireScriptHook("Change_Pos", {
+				cx = d[0].tofloat(),
+				cy = d[1].tofloat(),
+				cz = d[2].tofloat(),
+				r  = d[3].tofloat()
+			})) {
 				printl("Could not fire Hook: Change_Pos()")
-			}
-		}
-
-		if (message_type ==  "change_target_pos") {
-			if (!FireScriptHook("Reposition", null)) {
-				printl("Could not fire Hook: Reposition()")
 			}
 		}
 	}

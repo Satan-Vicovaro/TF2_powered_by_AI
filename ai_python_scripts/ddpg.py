@@ -299,11 +299,23 @@ class Enviroment:
         # dummy = DummyEnviroment()
         # dummy_rewards = dummy.evaluate(angles, observations)
 
-        if iteration % 1 == 0:
-            # next positions
-            gl.player_input_messages.put("change_target_pos|")
-            gl.send_message.set()
-            time.sleep(0.2)
+        # if iteration % 1 == 0:
+        #     # next positions
+        #     gl.player_input_messages.put("change_target_pos|")
+        #     gl.send_message.set()
+        #     time.sleep(0.2)
+
+        center_x = random.uniform(-500, 500)
+        center_y = random.uniform(-500, 500)
+        center_z = 140.0  # keep them on the ground plane
+        radius = random.uniform(50, 400)
+
+        self.player_input_messages.put(
+            f"change_shooter_pos|{center_x:.1f} {center_y:.1f} {center_z:.1f} {radius:.1f}"
+        )
+        gl.send_message.set()
+        time.sleep(0.2)
+
 
         while True:
             should_restart = self.request_positions()
@@ -332,26 +344,24 @@ class Enviroment:
             bot.damage_dealt = 0
 
     def evaluate(self, angles, observations: torch.Tensor):
-
-        # proper evaluation function which uses ⭐️real math⭐️ to calculate proper rewards
-        # value is in range [-1, 3]
         rewards = torch.zeros((angles.shape[0]))
 
-        s_pos, t_pos = observations.split(3, dim=1)
-        v_shooter_target = t_pos - s_pos  # vector: shooter ---> target
         for i, s_bot in enumerate(self.s_bots.values()):
+            miss_dist = float(s_bot.m_distance)
+            hit = s_bot.damage_dealt > 0
 
-            missile_pos = torch.tensor([s_bot.m_x, s_bot.m_y, s_bot.m_z])
-            v_shooter_missile = missile_pos - s_pos[i]  # vector: shooter ---> missile
+            if hit:
+                rewards[i] = 1.0
+            else:
+                # sigma tunable: 0.3 ≈ 300 units, adjust to target hitbox size
+                sigma = 0.3 # maybe should be lower
+                rewards[i] = torch.exp(torch.tensor(-(miss_dist**2) / sigma**2))
 
-            # angle between shooter ---> missile and shooter ---> target
-            cosine_angle = torch.dot(v_shooter_missile, v_shooter_target[i]) / (
-                v_shooter_missile.norm() * v_shooter_target[i].norm()
-            )
-            rewards[i] = cosine_angle**3  # ^3 to make it steeper
-
-            if s_bot.damage_dealt > 0:
-                rewards[i] *= 3  # aditional reward for hiting target
+                # Penalise extreme pitch — angles[:, 1] is in [-1, 1]
+                # abs(pitch) near 1.0 means straight up or straight down
+                pitch_normalized = angles[i, 1].abs()  # [0, 1]
+                pitch_penalty = pitch_normalized ** 2   # soft, quadratic — only bites near extremes
+                rewards[i] -= pitch_penalty
 
         self.show_and_update_logs(rewards)
         return rewards
@@ -395,7 +405,7 @@ class Enviroment:
     def request_positions(self):
 
         # request data postion data
-        gl.player_input_messages.put("get_position |")  # alway end message_type with "|"
+        self.player_input_messages.put("get_position |")  # alway end message_type with "|"
         gl.send_message.set()
 
         lg.logger.debug("Waiting for positions")
@@ -419,7 +429,7 @@ class Enviroment:
         for i, bot_id in enumerate(self.s_bots.keys()):
             message += " {0} {1} {2}\n".format(bot_id, angles[i][0], angles[i][1])
 
-        gl.player_input_messages.put(message)
+        self.player_input_messages.put(message)
         gl.send_message.set()
 
     def send_angles(self, bots: dict[np.int64, tf.TfBot], player_input_messages: Queue):
@@ -732,7 +742,7 @@ class DDPG:
         self.config = config
 
         if gl.load_neural_network:
-            checkpoint_data = torch.load("models/nauczony_mocno.pth")
+            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_30000.pth")
             self.actor.load_state_dict(checkpoint_data["actor"])
             self.critic.load_state_dict(checkpoint_data["critic"])
 
@@ -982,23 +992,15 @@ class DDPG:
 
 def main():
 
-    user_listener = UserListener()
-    user_listener.start()
-
+    enviroment = Enviroment()
     # start program
     gl.start_program.wait()
 
     if gl.enviroment_type == "dummy":
         enviroment = DummyEnviroment()
-    elif gl.enviroment_type == "normal":
-        enviroment = Enviroment()
-    else:
-        enviroment = Enviroment()
 
     ddbg = DDPG(enviroment)
     ddbg.train()
-
-    user_listener.stop()
 
 
 if __name__ == "__main__":
