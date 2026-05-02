@@ -8,3 +8,5 @@ Rewards_sum.txt
 venv/*
 models/* 
 .idea/*
+
+statistics_and_data/training_data_DDPG.csv
