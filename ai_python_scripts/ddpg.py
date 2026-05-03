@@ -218,6 +218,10 @@ class Enviroment:
         self.sum_reward_logger = []
         self.logger_dir_name = datetime.now().strftime("%H:%M")
 
+        self.reward_sigma = 1.0
+        self.minimal_sigma = 0.1
+        self.sigma_step = 0.05
+
         self.tf_listener = threading.Thread(
             target=sq.tf2_listener_and_sender,
             args=(
@@ -330,10 +334,11 @@ class Enviroment:
             hit = s_bot.damage_dealt > 0
 
             if hit:
-                rewards[i] = 1.5
+                rewards[i] = 1.2
             else:
                 # sigma tunable: 0.3 ≈ 300 units, adjust to target hitbox size
-                sigma = 0.5  # maybe should be lower
+                sigma = max(self.reward_sigma, self.minimal_sigma)  # maybe should be lower
+
                 rewards[i] = torch.exp(torch.tensor(-(miss_dist**2) / sigma**2))
 
                 pitch = angles[i, 1]
@@ -347,6 +352,10 @@ class Enviroment:
                     )  # soft, quadratic — only bites near extremes
                     rewards[i] -= pitch_penalty
 
+        if rewards.mean() > 0.7:
+            self.reward_sigma -= self.sigma_step
+            if self.reward_sigma > self.minimal_sigma:
+                lg.logger.info("Sigma decreased!")
         self.show_and_update_logs(rewards)
         return rewards
 
@@ -551,7 +560,7 @@ class DDPGConfig:
     checkpoint: bool = True  # Periodically save model weights
     num_checkpoints: int = 40  # Number of checkpoints/printing logs to create
     verbose: bool = False  # Verbose printing
-    total_steps: int = 30_000  # Total training steps
+    total_steps: int = 50_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
     learning_starts: int = 10  # Begin learning after this many steps
     gamma: float = 0.99  # Discount factor
@@ -743,7 +752,7 @@ class DDPG:
         self.config = config
 
         if gl.load_neural_network:
-            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_30000.pth")
+            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_50000.pth")
             self.actor.load_state_dict(checkpoint_data["actor"])
             self.critic.load_state_dict(checkpoint_data["critic"])
 

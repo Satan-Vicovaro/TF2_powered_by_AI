@@ -38,9 +38,13 @@ class Enviroment:
         self.sum_reward_logger = []
         self.logger_dir_name = datetime.datetime.now().strftime("%H:%M")
 
+        self.reward_sigma = 1.0
+        self.minimal_sigma = 0.1
+        self.sigma_step = 0.05
+
     def __del__(self):
         pass
-        #os._exit(0)
+        # os._exit(0)
 
     def get_observation_and_action_spaces(self):
         action_space = CustomActionSpace(
@@ -141,9 +145,14 @@ class Enviroment:
 
         distances = torch.norm(t_pos - closest_point, dim=1)
 
-        sigma = 1  # tunable
+        sigma = max(self.reward_sigma, self.minimal_sigma)  # maybe should be lower
         # bell curve
         rewards = torch.exp(-(distances**2) / sigma**2)
+
+        if rewards.mean() > 0.7:
+            self.reward_sigma -= self.sigma_step
+            if self.reward_sigma > self.minimal_sigma:
+                lg.logger.info("Sigma decreased!")
 
         self.show_and_update_logs(rewards)
         return rewards
