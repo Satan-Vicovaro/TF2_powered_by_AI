@@ -12,16 +12,9 @@ from squirrel_api import tf2_listener_and_sender
 from data_collector import shared_collector, Severity
 
 
-class CustomActionSpace:
-    "Parameters that descibes our inputs and outputs"
+from environment import CustomActionSpace
 
-    def __init__(self, high: np.ndarray, low: np.ndarray):
-        self.low = low
-        self.high = high
-        self.shape = self.low.shape
-
-
-class Enviroment:
+class DummyEnvironment:
     s_bot_count = 20
 
     def __init__(self):
@@ -39,7 +32,7 @@ class Enviroment:
         self.logger_dir_name = datetime.datetime.now().strftime("%H:%M")
 
         self.reward_sigma = 1.0
-        self.minimal_sigma = 0.1
+        self.minimal_sigma = 0.05
         self.sigma_step = 0.05
 
     def __del__(self):

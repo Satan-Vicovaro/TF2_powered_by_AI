@@ -53,7 +53,7 @@ class DataCollector:
 
         logger.logger.info(f"Data saved to {file_name}")
 
-    def load_data(self, file_name="log_data.json"):
+    def load_data(self, file_name="log_data_2.json"):
         try:
             with open("statistics_and_data/" + file_name, "r", encoding="utf-8") as f:
                 imported_dict = json.load(f)

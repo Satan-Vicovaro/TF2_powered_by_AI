@@ -17,7 +17,8 @@ import csv
 
 from user_listener import UserListener
 from data_collector import DataCollector, shared_collector, Severity
-from dummy_enviroment import Enviroment as DummyEnviroment
+from dummy_environment import DummyEnvironment
+from environment import Environment
 
 
 class ActorNetwork(nn.Module):
@@ -195,362 +196,7 @@ import threading
 import squirrel_api as sq
 
 
-class CustomActionSpace:
-    "Parameters that descibes our inputs and outputs"
 
-    def __init__(self, high: np.ndarray, low: np.ndarray):
-        self.low = low
-        self.high = high
-        self.shape = self.low.shape
-
-
-class Enviroment:
-    "Our tf enviroment is moved here"
-
-    def __init__(self):
-        self.bots: dict[np.int64, tf.TfBot] = dict()  # all of our bots
-        self.t_bots: dict[np.int64, tf.TfBot] = dict()  # sub category: target bots
-        self.s_bots: dict[np.int64, tf.TfBot] = dict()  # sub category: shooter bots
-        self.restart_count = 0
-        self.iteration = 0
-        self.accuracy_logger = []
-        self.avg_reward_logger = []
-        self.sum_reward_logger = []
-        self.logger_dir_name = datetime.now().strftime("%H:%M")
-
-        self.reward_sigma = 1.0
-        self.minimal_sigma = 0.1
-        self.sigma_step = 0.05
-
-        self.tf_listener = threading.Thread(
-            target=sq.tf2_listener_and_sender,
-            args=(
-                gl.player_input_messages,
-                self.bots,
-            ),
-            daemon=True,
-        )
-        gl.end_program.clear()
-        self.tf_listener.start()
-
-    def __del__(self):
-        gl.end_program.set()
-
-    def get_observation_and_action_spaces(self):
-        action_space = CustomActionSpace(high=np.array([360, 89]), low=np.array([0, -89]))
-        observation_space = CustomActionSpace(
-            np.array([1, 1, 1, 1, 1, 1]), np.array([-1, -1, -1, -1, -1, -1])
-        )
-        return action_space, observation_space
-
-    def reset(self) -> torch.Tensor:
-        """
-        Resets our enviroment and gets initial position,
-        in our case we just send tf positions
-        """
-
-        while True:
-            should_restart = self.request_positions()
-            if not should_restart:
-                break
-
-        # positions are saved in self.bots.dict
-        self.t_bots, self.s_bots = self.dispatch_bots_into_shooters_and_targets()
-
-        # normalizing data
-        self.normalize_data()
-
-        data = self.crate_training_data()
-
-        return data
-
-    def step(self, angles, observations, iteration):
-        """
-        the evaluation of the function,
-        returns:
-        next_obsevation (next bots positions, it does not change in our case),
-        reward,
-        terminated (if we succeed in achieving goal),
-        truncated (timeout limit in training session)
-        """
-        # this loop is kinda weird
-
-        # evaluate previous position
-
-        multipliers = torch.tensor([180.0, 90.0])
-        shifts = torch.tensor([180.0, 0.0])
-        real_angles = (angles * multipliers) + shifts
-
-        self.send_tensor_angles(real_angles)
-        # wait for damage response,
-        time.sleep(1.50)
-
-        while True:
-            should_restart = self.request_damage_data()
-            if not should_restart:
-                break
-
-        while True:
-            should_restart = self.request_bullet_data()
-            if not should_restart:
-                break
-
-        self.nomalize_missiles()
-
-        rewards = self.evaluate(angles, observations)
-
-        if iteration % 1 == 0:
-            self.request_change_target_position()
-            # self.request_change_shooter_positions()
-
-        while True:
-            should_restart = self.request_positions()
-            if not should_restart:
-                break
-        self.normalize_data()
-
-        # next positions
-        self.t_bots, self.s_bots = self.dispatch_bots_into_shooters_and_targets()
-        next_observation = self.crate_training_data()  # observation does not changes
-
-        self.reset_damage_dealt()
-
-        return (
-            next_observation,
-            rewards,
-            torch.zeros_like(rewards, dtype=torch.bool),
-            torch.zeros_like(rewards, dtype=torch.bool),
-        )
-
-    def reset_damage_dealt(self):
-        for bot in self.bots.values():
-            bot.damage_dealt = 0
-
-    def evaluate(self, angles, observations: torch.Tensor):
-        rewards = torch.zeros((angles.shape[0]))
-
-        for i, s_bot in enumerate(self.s_bots.values()):
-            miss_dist = torch.norm(torch.tensor([s_bot.m_miss_x, s_bot.m_miss_y, s_bot.m_miss_z]))
-            hit = s_bot.damage_dealt > 0
-
-            if hit:
-                rewards[i] = 1.2
-            else:
-                # sigma tunable: 0.3 ≈ 300 units, adjust to target hitbox size
-                sigma = max(self.reward_sigma, self.minimal_sigma)  # maybe should be lower
-
-                rewards[i] = torch.exp(torch.tensor(-(miss_dist**2) / sigma**2))
-
-                pitch = angles[i, 1]
-
-                # Penalise extreme pitch — angles[:, 1] is in [-1, 1]
-                # abs(pitch) near 1.0 means straight up or straight down
-                if not (-70 < pitch * 90 < 70):
-                    pitch_normalized = pitch.abs()  # [0, 1]
-                    pitch_penalty = (
-                        pitch_normalized**2
-                    )  # soft, quadratic — only bites near extremes
-                    rewards[i] -= pitch_penalty
-
-        if rewards.mean() > 0.7:
-            self.reward_sigma -= self.sigma_step
-            if self.reward_sigma > self.minimal_sigma:
-                lg.logger.info("Sigma decreased!")
-        self.show_and_update_logs(rewards)
-        return rewards
-
-    def random_action(self):
-        angles = torch.zeros(len(self.s_bots), 2)
-        for i, _ in enumerate(self.s_bots):
-            angles[i][0] = torch.tensor(random.uniform(-1, 1))
-            angles[i][1] = torch.tensor(random.uniform(-1, 1))
-        return angles
-
-    def request_bullet_data(self):
-        # requesting bullets distances from target_bot
-        gl.player_input_messages.put("send_distances|")
-        gl.send_message.set()
-
-        lg.logger.debug("waiting for bullet data")
-        # waiting for damage data
-        if not gl.received_bullet_data.wait(gl.MAX_DURATION):
-            lg.logger.warning("Received bullet data timeout reached, restarting the loop...")
-            self.restart_count += 1
-            lg.logger.warning("Restart count: " + str(self.restart_count))
-            return True
-        gl.received_bullet_data.clear()  # don't forget to clear the flag
-        return False
-
-    def request_damage_data(self):
-        # requesting damage data
-        gl.player_input_messages.put("send_damage|")
-        gl.send_message.set()
-
-        lg.logger.debug("waiting for damage data")
-        if not gl.received_damage_data.wait(gl.MAX_DURATION):
-            lg.logger.warning("Received damage data timeout reached, restarting the loop...")
-            self.restart_count += 1
-            lg.logger.warning("Restart count: " + str(self.restart_count))
-            return True
-        gl.received_damage_data.clear()
-        return False
-
-    def request_positions(self):
-
-        # request data postion data
-        gl.player_input_messages.put("get_position |")  # alway end message_type with "|"
-        gl.send_message.set()
-
-        lg.logger.debug("Waiting for positions")
-        # waiting for positions
-        if not gl.received_positions_data.wait(timeout=gl.MAX_DURATION):
-            lg.logger.warning("Received position timeout reached, restarting the loop...")
-            self.restart_count += 1
-            lg.logger.warning("Restart count: " + str(self.restart_count))
-            return True
-        gl.received_positions_data.clear()  # removing flag
-        return False
-
-    def send_tensor_angles(self, angles: torch.Tensor):
-
-        lg.logger.debug("Sending angles")
-
-        message = "angles |"
-
-        # message format:
-        # bot_id pitch (y) yaw (x)
-        for i, bot_id in enumerate(self.s_bots.keys()):
-            message += " {0} {1} {2}\n".format(bot_id, angles[i][0], angles[i][1])
-
-        gl.player_input_messages.put(message)
-        gl.send_message.set()
-
-    def send_angles(self, bots: dict[np.int64, tf.TfBot], player_input_messages: Queue):
-
-        message = "angles |"
-
-        # message format:
-        # bot_id pitch (y) yaw (x)
-        for bot_id, bot in zip(bots.keys(), bots.values()):
-            message += " {0} {1} {2}\n".format(bot_id, bot.pitch, bot.yaw)
-
-        player_input_messages.put(message)
-        gl.send_message.set()
-
-    def normalize_data(self):
-        for bot in self.bots.values():
-            bot.normalize()
-
-    def nomalize_missiles(self):
-        for bot in self.bots.values():
-            bot.normalize_missiles()
-
-    def dispatch_bots_into_shooters_and_targets(self):
-
-        target_bots: dict[np.int64, tf.TfBot] = {}
-        shooter_bots: dict[np.int64, tf.TfBot] = {}
-
-        # seperating shooters from target
-        for key, bot in self.bots.items():
-            if bot.bot_type == "s":
-                shooter_bots[key] = bot
-                continue
-            if bot.bot_type == "t":
-                target_bots[key] = bot
-                continue
-
-            lg.logger.warning("There is a bot without BotType?\n", bot)
-        return target_bots, shooter_bots
-
-    def crate_training_data(self):
-        """
-        returns:
-        torch.tensor(s_x, s_y, s_z, t_x, t_y, t_z)
-        """
-        if len(self.t_bots) > 1:
-            lg.logger.warning("We have more than one target bot")
-
-        t_bot: tf.TfBot = next(iter(self.t_bots.values()))
-
-        return torch.tensor(
-            [
-                (bot.pos_x, bot.pos_y, bot.pos_z, t_bot.pos_x, t_bot.pos_y, t_bot.pos_z)
-                for bot in self.s_bots.values()
-            ],
-            dtype=torch.float32,
-        )
-
-    def request_change_target_position(self):
-        gl.player_input_messages.put("change_target_pos|")
-        gl.send_message.set()
-        time.sleep(0.2)
-
-    def request_change_shooter_positions(self):
-        center_x = random.uniform(-500, 500)
-        center_y = random.uniform(-500, 500)
-        center_z = 140.0  # keep them on the ground plane
-        radius = random.uniform(50, 400)
-
-        gl.player_input_messages.put(
-            f"change_shooter_pos|{center_x:.1f} {center_y:.1f} {center_z:.1f} {radius:.1f}"
-        )
-        gl.send_message.set()
-        time.sleep(0.2)
-
-    def show_and_update_logs(self, rewards: torch.Tensor):
-
-        lg.logger.debug(rewards)
-
-        lg.logger.info("Average reward: {0:.2f}".format(rewards.mean()))
-        self.avg_reward_logger.append("{0:.2f}".format(rewards.mean()))
-        shared_collector.append("Average_reward", "{0:.2f}".format(rewards.mean()))
-
-        lg.logger.info("Sum of rewards: {0:.2f}".format(rewards.sum()))
-        self.sum_reward_logger.append("{0:.2f}".format(rewards.sum()))
-        shared_collector.append("Sum_reward", "{0:.2f}".format(rewards.mean()))
-
-        hit_counter = 0
-        for s_bot in self.s_bots.values():
-            if s_bot.damage_dealt > 0:
-                hit_counter += 1
-
-        lg.logger.info("Accuracy: {0:.2f}".format(hit_counter / len(self.s_bots)))
-        shared_collector.append("Hit_counter", "{0:.2f}".format(hit_counter / len(self.s_bots)))
-        self.accuracy_logger.append("{0:.2f}".format(hit_counter / len(self.s_bots)))
-
-    def checkpoint_save_logs(self):
-        Enviroment.create_dir(self.logger_dir_name)
-
-        Enviroment.save_data_to_file(
-            str(self.accuracy_logger), "statistics_and_data/" + self.logger_dir_name + "/accuracy"
-        )
-        Enviroment.save_data_to_file(
-            str(self.avg_reward_logger),
-            "statistics_and_data/" + self.logger_dir_name + "/avg_reward",
-        )
-        Enviroment.save_data_to_file(
-            str(self.sum_reward_logger),
-            "statistics_and_data/" + self.logger_dir_name + "/sum_reward",
-        )
-
-    @staticmethod
-    def get_next_filename(base_name="file", extension=".txt"):
-        index = 1
-        while True:
-            filename = f"{base_name}_{index}{extension}"
-            if not os.path.exists(filename):
-                return filename
-            index += 1
-
-    @staticmethod
-    def save_data_to_file(data, file_name):
-        with open(file_name, "w") as file:
-            file.write(data)
-        lg.logger.info(f"Data saved to {file_name}")
-
-    @staticmethod
-    def create_dir(name):
-        os.makedirs("statistics_and_data/" + name, exist_ok=True)
 
 
 class DDPGConfig:
@@ -562,7 +208,7 @@ class DDPGConfig:
     verbose: bool = False  # Verbose printing
     total_steps: int = 50_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
-    learning_starts: int = 10  # Begin learning after this many steps
+    learning_starts: int = 10  # Begin learning after this many step
     gamma: float = 0.99  # Discount factor
     lr: float = 0.001  # Learning rate
     hidden_dim: int = 64  # Actor and critic network hidden dim
@@ -752,7 +398,7 @@ class DDPG:
         self.config = config
 
         if gl.load_neural_network:
-            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_50000.pth")
+            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_31250_smart.pth")
             self.actor.load_state_dict(checkpoint_data["actor"])
             self.critic.load_state_dict(checkpoint_data["critic"])
 
@@ -999,6 +645,32 @@ class DDPG:
 
         return logger.logs
 
+    def act(self):
+        logger = Logger(
+            total_steps=self.config.total_steps, num_checkpoints=self.config.num_checkpoints
+        )
+
+        observations = self.env.reset()
+
+        for step in range(1, self.config.total_steps + 1):
+            actions = self.select_action(observations, add_noise=False)
+            self.env.step()
+
+            next_observations, rewards, terminated, truncated = self.env.step(
+                actions, observations, self.iteration
+            )
+
+            if terminated.any() or truncated.any():
+                next_observations, _ = self.env.reset()
+                self.noise_generator.reset()
+            observations = next_observations
+
+            # Print training info if verbose
+            if self.config.verbose:
+                logger.print_logs()
+
+            self.iteration += 1
+
 
 def main():
     user_listener = UserListener()
@@ -1009,11 +681,11 @@ def main():
 
     enviroment = None
     if gl.enviroment_type == "dummy":
-        enviroment = DummyEnviroment()
+        enviroment = DummyEnvironment()
     elif gl.enviroment_type == "normal":
-        enviroment = Enviroment()
+        enviroment = Environment()
     else:
-        enviroment = Enviroment()
+        enviroment = Environment()
 
     ddbg = DDPG(enviroment)
     ddbg.train()
