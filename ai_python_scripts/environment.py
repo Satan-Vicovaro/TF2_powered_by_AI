@@ -13,6 +13,7 @@ import squirrel_api as sq
 import TfBot as tf
 from data_collector import shared_collector
 
+
 class CustomActionSpace:
     "Parameters that descibes our inputs and outputs"
 
@@ -20,6 +21,50 @@ class CustomActionSpace:
         self.low = low
         self.high = high
         self.shape = self.low.shape
+
+
+class AdaptiveSigma:
+    """Dynamically adjusts a sigma value based on a rolling average of rewards."""
+
+    def __init__(
+        self,
+        initial_sigma: float,
+        minimal_sigma: float,
+        max_sigma: float,
+        sigma_step: float,
+        window_size: int = 1000,
+        increase_threshold: float = 0.01,
+        decrease_threshold: float = 0.8,
+    ):
+        self.sigma = initial_sigma
+        self.minimal_sigma = minimal_sigma
+        self.max_sigma = max_sigma
+        self.sigma_step = sigma_step
+        self.window_size = window_size
+        self.increase_threshold = increase_threshold
+        self.decrease_threshold = decrease_threshold
+        self.recent_rewards = []
+
+    def update(self, current_reward: float):
+        self.recent_rewards.append(current_reward)
+        if len(self.recent_rewards) >= self.window_size:
+            rolling_mean = sum(self.recent_rewards) / self.window_size
+
+            if rolling_mean > self.decrease_threshold:
+                self._adjust_sigma(-self.sigma_step, "decreased")
+            elif rolling_mean < self.increase_threshold:
+                self._adjust_sigma(self.sigma_step, "increased")
+            else:
+                self.recent_rewards.pop(0)
+
+    def _adjust_sigma(self, step: float, action_name: str):
+        new_sigma = max(self.minimal_sigma, min(self.max_sigma, self.sigma + step))
+        if new_sigma != self.sigma:
+            self.sigma = new_sigma
+            lg.logger.info(f"Sigma {action_name} to {self.sigma:.3f}")
+
+            shared_collector.append("Sigma_change", f"{self.sigma:.3f}")
+        self.recent_rewards.clear()
 
 
 class Environment:
@@ -36,9 +81,13 @@ class Environment:
         self.sum_reward_logger = []
         self.logger_dir_name = datetime.now().strftime("%H:%M")
 
-        self.reward_sigma = 1.0
-        self.minimal_sigma = 0.1
-        self.sigma_step = 0.05
+        self.adaptive_sigma = AdaptiveSigma(
+            initial_sigma=1.0,
+            minimal_sigma=0.001,
+            max_sigma=1.0,
+            sigma_step=0.05,
+            decrease_threshold=0.8,
+        )
 
         self.tf_listener = threading.Thread(
             target=sq.tf2_listener_and_sender,
@@ -157,7 +206,7 @@ class Environment:
                 rewards[i] = 1.2
             else:
                 # sigma tunable: 0.3 ≈ 300 units, adjust to target hitbox size
-                sigma = max(self.reward_sigma, self.minimal_sigma)  # maybe should be lower
+                sigma = self.adaptive_sigma.sigma
 
                 rewards[i] = torch.exp(torch.tensor(-(miss_dist**2) / sigma**2))
 
@@ -172,10 +221,7 @@ class Environment:
                     )  # soft, quadratic — only bites near extremes
                     rewards[i] -= pitch_penalty
 
-        if rewards.mean() > 0.8:
-            self.reward_sigma -= self.sigma_step
-            if self.reward_sigma > self.minimal_sigma:
-                lg.logger.info("Sigma decreased!")
+        self.adaptive_sigma.update(rewards.mean().item())
 
         self.show_and_update_logs(rewards)
         return rewards

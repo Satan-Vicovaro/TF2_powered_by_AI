@@ -196,35 +196,32 @@ import threading
 import squirrel_api as sq
 
 
-
-
-
 class DDPGConfig:
     env_name: str = "TF2-missile-learner"  # Environment name
     agent_name: str = "DDPG"  # Agent name
     device: str = "cpu"  # Torch device
     checkpoint: bool = True  # Periodically save model weights
-    num_checkpoints: int = 40  # Number of checkpoints/printing logs to create
+    num_checkpoints: int = 10  # Number of checkpoints/printing logs to create
     verbose: bool = False  # Verbose printing
-    total_steps: int = 50_000  # Total training steps
+    total_steps: int = 200_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
-    learning_starts: int = 10  # Begin learning after this many step
+    learning_starts: int = 50000  # Begin learning after this many step
     gamma: float = 0.99  # Discount factor
     lr: float = 0.001  # Learning rate
-    hidden_dim: int = 64  # Actor and critic network hidden dim
-    buffer_capacity: int = 50_000  # Maximum replay buffer capacity
+    hidden_dim: int = 64 * 4  # Actor and critic network hidden dim
+    buffer_capacity: int = 100_000  # Maximum replay buffer capacity
     batch_size: int = 32 * 2  # Batch size used by learner
     num_steps: int = 1  # Number of steps to unroll Bellman equation by
     tau: float = 0.005  # Soft target network update interpolation coefficient
     grad_norm_clip: float = 1000.0  # Global gradient clipping value
 
-    noise_sigma: float = 0.50  # OU noise standard deviation
-    sigma_decrease_coef: float = 0.01
-    min_noise_sigma: float = 0.01
+    noise_sigma: float = 0.10  # OU noise standard deviation
+    sigma_decrease_coef: float = 0.005
+    min_noise_sigma: float = 0.001
 
     noise_theta: float = 0.05  # OU noise reversion rate
     min_noise_theta: float = 0.01
-    theta_decrease_coef: float = 0.001
+    theta_decrease_coef: float = 0.000
 
 
 class Logger:
@@ -398,7 +395,7 @@ class DDPG:
         self.config = config
 
         if gl.load_neural_network:
-            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_31250_smart.pth")
+            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_200000_dummy_2.pth")
             self.actor.load_state_dict(checkpoint_data["actor"])
             self.critic.load_state_dict(checkpoint_data["critic"])
 
@@ -474,7 +471,7 @@ class DDPG:
                 # if self.iteration % 1000 == 0:
                 #     self.pitch_angle_cap = max(self.pitch_max,self.pitch_angle_cap - 3)
 
-                if self.iteration % 500 == 0:
+                if self.iteration % 1000 == 0:
                     self.noise_generator.sigma = max(
                         self.config.min_noise_sigma,
                         self.noise_generator.sigma - self.config.sigma_decrease_coef,

@@ -12,7 +12,8 @@ from squirrel_api import tf2_listener_and_sender
 from data_collector import shared_collector, Severity
 
 
-from environment import CustomActionSpace
+from environment import CustomActionSpace, AdaptiveSigma
+
 
 class DummyEnvironment:
     s_bot_count = 20
@@ -31,9 +32,13 @@ class DummyEnvironment:
         self.sum_reward_logger = []
         self.logger_dir_name = datetime.datetime.now().strftime("%H:%M")
 
-        self.reward_sigma = 1.0
-        self.minimal_sigma = 0.05
-        self.sigma_step = 0.05
+        self.adaptive_sigma = AdaptiveSigma(
+            initial_sigma=1.0,
+            minimal_sigma=0.1,
+            max_sigma=2.0,
+            sigma_step=0.05,
+            decrease_threshold=0.7,
+        )
 
     def __del__(self):
         pass
@@ -138,14 +143,11 @@ class DummyEnvironment:
 
         distances = torch.norm(t_pos - closest_point, dim=1)
 
-        sigma = max(self.reward_sigma, self.minimal_sigma)  # maybe should be lower
+        sigma = self.adaptive_sigma.sigma
         # bell curve
         rewards = torch.exp(-(distances**2) / sigma**2)
 
-        if rewards.mean() > 0.7:
-            self.reward_sigma -= self.sigma_step
-            if self.reward_sigma > self.minimal_sigma:
-                lg.logger.info("Sigma decreased!")
+        self.adaptive_sigma.update(rewards.mean().item())
 
         self.show_and_update_logs(rewards)
         return rewards

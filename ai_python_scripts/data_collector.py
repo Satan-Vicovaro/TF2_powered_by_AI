@@ -53,7 +53,7 @@ class DataCollector:
 
         logger.logger.info(f"Data saved to {file_name}")
 
-    def load_data(self, file_name="log_data_2.json"):
+    def load_data(self, file_name="log_data.json"):
         try:
             with open("statistics_and_data/" + file_name, "r", encoding="utf-8") as f:
                 imported_dict = json.load(f)
@@ -106,6 +106,7 @@ class DataCollector:
         iterations = []
         avg_rewards = []
         sum_rewards = []
+        sigma_changes = []
 
         # Iterate through the data list to extract values
         for i, iteration_dict in enumerate(self.data):
@@ -119,6 +120,8 @@ class DataCollector:
                         avg_val = float(value)
                     elif element_type == "Sum_reward":
                         sum_val = float(value)
+                    elif element_type == "Sigma_change":
+                        sigma_changes.append((i, float(value)))
                 except (ValueError, TypeError):
                     continue  # Skip if the data isn't a valid number
 
@@ -154,7 +157,17 @@ class DataCollector:
         ax1.set_title("Average Reward over Time")
         ax1.set_xlabel("Iteration")
         ax1.set_ylabel("Average Reward")
-        ax1.legend()
+        
+        for it, val in sigma_changes:
+            ax1.axvline(x=it, color='red', linestyle=':', alpha=0.6)
+            
+        handles1, labels1 = ax1.get_legend_handles_labels()
+        if sigma_changes:
+            from matplotlib.lines import Line2D
+            handles1.append(Line2D([0], [0], color='red', linestyle=':', alpha=0.6))
+            labels1.append('Sigma Changed')
+            
+        ax1.legend(handles1, labels1)
         ax1.grid(True, linestyle="--", alpha=0.7)
 
         # --- Sum Reward Plot ---
@@ -171,7 +184,17 @@ class DataCollector:
         ax2.set_title("Sum Reward over Time")
         ax2.set_xlabel("Iteration")
         ax2.set_ylabel("Sum Reward")
-        ax2.legend()
+        
+        for it, val in sigma_changes:
+            ax2.axvline(x=it, color='red', linestyle=':', alpha=0.6)
+            
+        handles2, labels2 = ax2.get_legend_handles_labels()
+        if sigma_changes:
+            from matplotlib.lines import Line2D
+            handles2.append(Line2D([0], [0], color='red', linestyle=':', alpha=0.6))
+            labels2.append('Sigma Changed')
+            
+        ax2.legend(handles2, labels2)
         ax2.grid(True, linestyle="--", alpha=0.7)
 
         plt.tight_layout()
