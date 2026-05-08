@@ -205,7 +205,7 @@ class DDPGConfig:
     verbose: bool = False  # Verbose printing
     total_steps: int = 200_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
-    learning_starts: int = 50000  # Begin learning after this many step
+    learning_starts: int = 1000  # Begin learning after this many step
     gamma: float = 0.99  # Discount factor
     lr: float = 0.001  # Learning rate
     hidden_dim: int = 64 * 4  # Actor and critic network hidden dim
@@ -395,7 +395,7 @@ class DDPG:
         self.config = config
 
         if gl.load_neural_network:
-            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_200000_dummy_2.pth")
+            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_200000_dummy_3.pth")
             self.actor.load_state_dict(checkpoint_data["actor"])
             self.critic.load_state_dict(checkpoint_data["critic"])
 
@@ -634,6 +634,7 @@ class DDPG:
 
             if self.iteration % 1000 == 0:
                 shared_collector.print_interation_data()
+                lg.logger.info("Sigma: {0:.3f}".format(self.env.adaptive_sigma.sigma))
 
         # Training ended
         if self.config.verbose:
