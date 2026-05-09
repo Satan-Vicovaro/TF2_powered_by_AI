@@ -203,7 +203,7 @@ class DDPGConfig:
     checkpoint: bool = True  # Periodically save model weights
     num_checkpoints: int = 10  # Number of checkpoints/printing logs to create
     verbose: bool = False  # Verbose printing
-    total_steps: int = 200_000  # Total training steps
+    total_steps: int = 52_137  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
     learning_starts: int = 1000  # Begin learning after this many step
     gamma: float = 0.99  # Discount factor
@@ -216,12 +216,12 @@ class DDPGConfig:
     grad_norm_clip: float = 1000.0  # Global gradient clipping value
 
     noise_sigma: float = 0.10  # OU noise standard deviation
-    sigma_decrease_coef: float = 0.005
-    min_noise_sigma: float = 0.001
+    sigma_decrease_coef: float = 0.02
+    min_noise_sigma: float = 0.00
 
     noise_theta: float = 0.05  # OU noise reversion rate
     min_noise_theta: float = 0.01
-    theta_decrease_coef: float = 0.000
+    theta_decrease_coef: float = 0.001
 
 
 class Logger:

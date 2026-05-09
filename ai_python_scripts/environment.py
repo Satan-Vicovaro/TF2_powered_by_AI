@@ -83,10 +83,10 @@ class Environment:
 
         self.adaptive_sigma = AdaptiveSigma(
             initial_sigma=1.0,
-            minimal_sigma=0.001,
+            minimal_sigma=0.1,
             max_sigma=1.0,
             sigma_step=0.05,
-            decrease_threshold=0.8,
+            decrease_threshold=0.7,
         )
 
         self.tf_listener = threading.Thread(
@@ -203,7 +203,7 @@ class Environment:
             hit = s_bot.damage_dealt > 0
 
             if hit:
-                rewards[i] = 1.2
+                rewards[i] = 1.0
             else:
                 # sigma tunable: 0.3 ≈ 300 units, adjust to target hitbox size
                 sigma = self.adaptive_sigma.sigma
