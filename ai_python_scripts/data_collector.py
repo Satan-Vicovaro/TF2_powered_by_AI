@@ -100,18 +100,21 @@ class DataCollector:
 
     def plot_data(self, window_size=1000):
         """
-        Extracts Average_reward and Sum_reward from the stored data
+        Extracts Average_reward, Sum_reward and Hit_counter from the stored data
         and plots them using matplotlib.
         """
         iterations = []
         avg_rewards = []
         sum_rewards = []
         sigma_changes = []
+        hit_iterations = []
+        hit_counters = []
 
         # Iterate through the data list to extract values
         for i, iteration_dict in enumerate(self.data):
             avg_val = None
             sum_val = None
+            hit_val = None
 
             # Unpack the tuple key and get the values
             for (severity, element_type), value in iteration_dict.items():
@@ -120,6 +123,8 @@ class DataCollector:
                         avg_val = float(value)
                     elif element_type == "Sum_reward":
                         sum_val = float(value)
+                    elif element_type == "Hit_counter":
+                        hit_val = float(value)
                     elif element_type == "Sigma_change":
                         sigma_changes.append((i, float(value)))
                 except (ValueError, TypeError):
@@ -130,6 +135,10 @@ class DataCollector:
                 iterations.append(i)
                 avg_rewards.append(avg_val)
                 sum_rewards.append(sum_val)
+            
+            if hit_val is not None:
+                hit_iterations.append(i)
+                hit_counters.append(hit_val)
 
         if not iterations:
             print("No reward data found to plot.")
@@ -139,7 +148,10 @@ class DataCollector:
         sum_smooth, sum_std = self._get_rolling_stats(sum_rewards, window_size)
 
         # Plotting
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        if hit_iterations:
+            fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(21, 6))
+        else:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
         # --- Average Reward Plot ---
         # 1. Plot the smoothed line
@@ -196,6 +208,35 @@ class DataCollector:
             
         ax2.legend(handles2, labels2)
         ax2.grid(True, linestyle="--", alpha=0.7)
+
+        # --- Hit Counter Plot ---
+        if hit_iterations:
+            hit_smooth, hit_std = self._get_rolling_stats(hit_counters, window_size)
+            ax3.plot(hit_iterations, hit_smooth, color="orange", label=f"Moving Avg (window={window_size})")
+            ax3.fill_between(
+                hit_iterations,
+                [m - s for m, s in zip(hit_smooth, hit_std)],
+                [m + s for m, s in zip(hit_smooth, hit_std)],
+                color="orange",
+                alpha=0.2,
+                label="±1 Std Deviation",
+            )
+
+            ax3.set_title("Hit Counter over Time")
+            ax3.set_xlabel("Iteration")
+            ax3.set_ylabel("Hit Counter")
+            
+            for it, val in sigma_changes:
+                ax3.axvline(x=it, color='red', linestyle=':', alpha=0.6)
+                
+            handles3, labels3 = ax3.get_legend_handles_labels()
+            if sigma_changes:
+                from matplotlib.lines import Line2D
+                handles3.append(Line2D([0], [0], color='red', linestyle=':', alpha=0.6))
+                labels3.append('Sigma Changed')
+                
+            ax3.legend(handles3, labels3)
+            ax3.grid(True, linestyle="--", alpha=0.7)
 
         plt.tight_layout()
         plt.show()

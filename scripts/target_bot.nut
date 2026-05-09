@@ -13,7 +13,7 @@ const debug = false;
 // Bot spawn constants
 const DMG_BEFORE_REPOSITION = 100 // TODO specify how much damage for bot to reposition
 const TARGET_MIN_RADIUS = 300
-const TARGET_MAX_RADIUS = 1200
+const TARGET_MAX_RADIUS = 800
 const SPAWN_MIN_HEIGHT = 50.0
 const SPAWN_MAX_HEIGHT = 1000.0
 const ORIGIN_X = 0

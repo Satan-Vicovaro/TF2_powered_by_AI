@@ -96,7 +96,7 @@ class::bot_handler {
 
     function Setup() {
         BotIgnoreEnemy()
-        TeleportBots(Vector(0, 0, 140), 50)
+        TeleportBots(Vector(0, 0, 140), 200)
     }
 }
 

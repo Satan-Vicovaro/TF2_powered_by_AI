@@ -158,6 +158,7 @@ class :: python_listener {
 		}
 
 		if (message_type == "change_shooter_pos") {
+			printl("change shooter position")
 			local data = parts[1]  // "cx cy cz r"
 			local d = split(strip(data), " ")
 			if (!FireScriptHook("Change_Pos", {
@@ -167,6 +168,13 @@ class :: python_listener {
 				r  = d[3].tofloat()
 			})) {
 				printl("Could not fire Hook: Change_Pos()")
+			}
+		}
+
+        if (message_type ==  "change_target_pos") {
+			printl("change target position")
+			if (!FireScriptHook("Reposition", null)) {
+				printl("Could not fire Hook: Reposition()")
 			}
 		}
 	}

@@ -32,7 +32,7 @@ class AdaptiveSigma:
         minimal_sigma: float,
         max_sigma: float,
         sigma_step: float,
-        window_size: int = 1000,
+        window_size: int = 500,
         increase_threshold: float = 0.01,
         decrease_threshold: float = 0.8,
     ):
@@ -82,11 +82,11 @@ class Environment:
         self.logger_dir_name = datetime.now().strftime("%H:%M")
 
         self.adaptive_sigma = AdaptiveSigma(
-            initial_sigma=1.0,
-            minimal_sigma=0.1,
+            initial_sigma=0.8,
+            minimal_sigma=0.06,  # minimal sigma min value 0.06 or more
             max_sigma=1.0,
-            sigma_step=0.05,
-            decrease_threshold=0.7,
+            sigma_step=0.02,
+            decrease_threshold=0.8,
         )
 
         self.tf_listener = threading.Thread(
@@ -166,9 +166,10 @@ class Environment:
 
         rewards = self.evaluate(angles, observations)
 
-        if iteration % 1 == 0:
+        if iteration % 2 == 0:
             self.request_change_target_position()
-            # self.request_change_shooter_positions()
+        else:
+            self.request_change_shooter_positions()
 
         while True:
             should_restart = self.request_positions()
@@ -214,7 +215,7 @@ class Environment:
 
                 # Penalise extreme pitch — angles[:, 1] is in [-1, 1]
                 # abs(pitch) near 1.0 means straight up or straight down
-                if not (-70 < pitch * 90 < 70):
+                if not (-85 < pitch * 90 < 70):
                     pitch_normalized = pitch.abs()  # [0, 1]
                     pitch_penalty = (
                         pitch_normalized**2
@@ -353,10 +354,10 @@ class Environment:
         time.sleep(0.2)
 
     def request_change_shooter_positions(self):
-        center_x = random.uniform(-500, 500)
-        center_y = random.uniform(-500, 500)
-        center_z = 140.0  # keep them on the ground plane
-        radius = random.uniform(50, 400)
+        center_x = random.uniform(-200, 200)
+        center_y = random.uniform(-200, 200)
+        center_z = 10.0  # keep them on the ground plane
+        radius = random.uniform(100, 350)
 
         gl.player_input_messages.put(
             f"change_shooter_pos|{center_x:.1f} {center_y:.1f} {center_z:.1f} {radius:.1f}"
@@ -384,6 +385,7 @@ class Environment:
         lg.logger.info("Accuracy: {0:.2f}".format(hit_counter / len(self.s_bots)))
         shared_collector.append("Hit_counter", "{0:.2f}".format(hit_counter / len(self.s_bots)))
         self.accuracy_logger.append("{0:.2f}".format(hit_counter / len(self.s_bots)))
+        lg.logger.info("Sigma: {0:.3f}".format(self.adaptive_sigma.sigma))
 
     def checkpoint_save_logs(self):
         Environment.create_dir(self.logger_dir_name)
