@@ -395,9 +395,13 @@ class DDPG:
             theta=config.noise_theta,
         )
         self.config = config
+        self.is_loaded = False
 
         if gl.load_neural_network:
-            checkpoint_data = torch.load("models/DDPG_TF2-missile-learner_15639_smart.pth")
+            self.is_loaded = True
+            checkpoint_data = torch.load(
+                "models/DDPG_TF2-missile-learner_50000_proper_train_006sigma.pth"
+            )
             self.actor.load_state_dict(checkpoint_data["actor"])
             self.critic.load_state_dict(checkpoint_data["critic"])
 
@@ -571,7 +575,7 @@ class DDPG:
         for step in range(1, self.config.total_steps + 1):
             shared_collector.next_iteration()
             # Select action
-            if step > self.config.learning_starts:
+            if self.is_loaded or step > self.config.learning_starts:
                 actions = self.select_action(observations, add_noise=True)
             else:
                 # Random if not yet learning
@@ -604,7 +608,13 @@ class DDPG:
 
             # for _ in range(0, 10):
             # Perform learning step
-            if len(self.buffer) > self.config.batch_size and step >= self.config.learning_starts:
+
+            # If a model was loaded, require a much larger buffer before starting gradient descent
+            # to prevent catastrophic forgetting on a tiny dataset of recent experiences.
+            required_buffer_size = 2000 if self.is_loaded else self.config.batch_size
+            if len(self.buffer) > required_buffer_size and (
+                self.is_loaded or step >= self.config.learning_starts
+            ):
                 self.learn()
 
             # Reset environment and noise if episode ended
