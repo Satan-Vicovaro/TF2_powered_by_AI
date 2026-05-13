@@ -64,6 +64,9 @@ class UserListener:
                     lg.logger.info(
                         "Options: start \n load nn \n debug on \n debug off \n plot data \n plot file \n dummy \n normal \n help \n"
                     )
+                elif user_input.lower() == "act":
+                    lg.logger.info("Bot will not be learning")
+                    gl.is_learning = False
                 else:
                     player_input_messages.put(user_input + " |")
 

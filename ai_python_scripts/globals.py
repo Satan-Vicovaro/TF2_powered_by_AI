@@ -20,5 +20,7 @@ load_neural_network = False
 
 enviroment_type = "normal"
 
+is_learning = True
+
 POLLING_INTERVAL = 0.01  # in seconds [s]
 MAX_DURATION = 5  # seconds

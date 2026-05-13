@@ -399,9 +399,7 @@ class DDPG:
 
         if gl.load_neural_network:
             self.is_loaded = True
-            checkpoint_data = torch.load(
-                "models/DDPG_TF2-missile-learner_50000_proper_train_006sigma.pth"
-            )
+            checkpoint_data = torch.load("statistics_and_data/smart_1.pth")
             self.actor.load_state_dict(checkpoint_data["actor"])
             self.critic.load_state_dict(checkpoint_data["critic"])
 
@@ -530,8 +528,6 @@ class DDPG:
 
         # Critic loss defined as mean squared temporal difference error
         critic_loss = F.mse_loss(current_action_q, target_q)
-
-        # Backward pass and optimiser step
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         nn.utils.clip_grad_norm_(self.critic.parameters(), self.config.grad_norm_clip)
@@ -664,7 +660,6 @@ class DDPG:
 
         for step in range(1, self.config.total_steps + 1):
             actions = self.select_action(observations, add_noise=False)
-            self.env.step()
 
             next_observations, rewards, terminated, truncated = self.env.step(
                 actions, observations, self.iteration
@@ -698,7 +693,10 @@ def main():
         enviroment = Environment()
 
     ddbg = DDPG(enviroment)
-    ddbg.train()
+    if gl.is_learning:
+        ddbg.train()
+    else:
+        ddbg.act()
 
     user_listener.stop()
 
