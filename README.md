@@ -18,11 +18,8 @@ This project aims to implement a neural network that attempts to hit a target wi
 - Two neural network implementations (including a DDPG model)  
 - Basic logging system
 
-> **Note:** The neural networks are currently non-functional, likely due to bugs in the code. This might be resolved in the future.
-
 The DDPG implementation is based on this:  
 https://www.kaggle.com/code/auxeno/ddpg-rl/notebook
-
 
 ---
 
@@ -39,6 +36,7 @@ https://www.kaggle.com/code/auxeno/ddpg-rl/notebook
  python load_to_tf2.py
  ```
 - This creates a `config.json` file. Open it and specify the correct paths to your directories at TF2.
+- create folders in Team Fortress 2/tf : scripts/vscripts if absent.
 
 2. **Load Files into TF2**
 
@@ -50,6 +48,7 @@ python load_to_tf2.py
 4. **Start TF2 and Create a Game**
   - Launch Team Fortress 2.
   - Start a new game on map: `proper_train_map`.
+  - Select the *blue team*.
 
 4. **Initialize the Server**
   - Open the in-game developer console.
