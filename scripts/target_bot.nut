@@ -8,11 +8,12 @@
 ::STATUE_HEIGHT <- 0
 
 // Debugging constant
-const debug = false
+const debug = false;
 
 // Bot spawn constants
 const DMG_BEFORE_REPOSITION = 100 // TODO specify how much damage for bot to reposition
-const SPAWN_RADIUS = 300
+const TARGET_MIN_RADIUS = 300
+const TARGET_MAX_RADIUS = 800
 const SPAWN_MIN_HEIGHT = 50.0
 const SPAWN_MAX_HEIGHT = 1000.0
 const ORIGIN_X = 0
@@ -65,36 +66,35 @@ class ::TargetBot
     }
 
 
-    // Moves the bot to a random location within a sphere of radius RADIUS around ORIGIN
     function move_to_random_position()
     {
-        local radius = SPAWN_RADIUS;
-        local origin = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS);
+        local radius = rand() % (TARGET_MAX_RADIUS - TARGET_MIN_RADIUS) + TARGET_MIN_RADIUS
 
-        local dir = Vector();
-        VS.RandomVectorInUnitSphere(dir);
-
-        dir *= radius;
-
-        dir.z = RandomFloat(SPAWN_MIN_HEIGHT, SPAWN_MAX_HEIGHT)
-
-        local targetPos = origin + dir;
-
-        move_to_position(targetPos);
-    }
-
-    // Moves bot to a random position on a circle, away from the training bots
-    function random_move_alt()
-    {
-	    local radius = rand() % 350 + 700
-
-    	local random_vec = Vector()
-	    VS.RandomVectorInUnitSphere(random_vec)
-	    local height = fabs(random_vec.x) // used RandomVector just to generate random float
+        local random_vec = Vector()
+        VS.RandomVectorInUnitSphere(random_vec)
+        local height = fabs(random_vec.x)
         height = (height * (SPAWN_MAX_HEIGHT - SPAWN_MIN_HEIGHT)) + SPAWN_MIN_HEIGHT
 
         local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + height)
 
+        local angle = rand() % 360 * PI / 180.0
+
+        pos.x = pos.x + radius * cos(angle)
+        pos.y = pos.y + radius * sin(angle)
+
+        move_to_position(pos)
+    }
+
+    function random_move_alt()
+    {
+        local radius = rand() % (TARGET_MAX_RADIUS - TARGET_MIN_RADIUS) + TARGET_MIN_RADIUS
+
+        local random_vec = Vector()
+        VS.RandomVectorInUnitSphere(random_vec)
+        local height = fabs(random_vec.x)
+        height = (height * (SPAWN_MAX_HEIGHT - SPAWN_MIN_HEIGHT)) + SPAWN_MIN_HEIGHT
+
+        local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + height)
 
         local angle = rand() % 360 * PI / 180.0
         this.cur_ang = angle
@@ -105,26 +105,25 @@ class ::TargetBot
         move_to_position(pos)
     }
 
-    // Slightly changes the position of a bot on a circle
     function small_move()
     {
-	local radius = rand() % 350 + 700
-	local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS)
+        local radius = rand() % (TARGET_MAX_RADIUS - TARGET_MIN_RADIUS) + TARGET_MIN_RADIUS
+        local pos = Vector(ORIGIN_X, ORIGIN_Y, STATUE_HEIGHT + SPAWN_RADIUS)
 
-	local angle = (rand() % 20 - 10) * PI / 180.0
-	this.cur_ang = this.cur_ang + angle
+        local angle = (rand() % 20 - 10) * PI / 180.0
+        this.cur_ang = this.cur_ang + angle
 
-	pos.x = pos.x + radius * cos(this.cur_ang)
-	pos.y = pos.y + radius * sin(this.cur_ang)
+        pos.x = pos.x + radius * cos(this.cur_ang)
+        pos.y = pos.y + radius * sin(this.cur_ang)
 
-    local random_vec = Vector()
-	VS.RandomVectorInUnitSphere(random_vec);
-	local height = random_vec.z // used RandomVector just to generate random float
-    if (pos.z > 60 ) {
-	    pos.z = pos.z + height * 50
-    }else {
-        pos.z = pos.z + fabs(height)
-    }
+        local random_vec = Vector()
+        VS.RandomVectorInUnitSphere(random_vec)
+        local height = random_vec.z
+        if (pos.z > 60) {
+            pos.z = pos.z + height * 50
+        } else {
+            pos.z = pos.z + fabs(height)
+        }
         move_to_position(pos)
     }
 }

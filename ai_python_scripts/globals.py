@@ -1,6 +1,7 @@
-import threading 
+from queue import Queue
+import threading
 
-#------------------------------------ thread flags -----------------------------------
+# ------------------------------------ thread flags -----------------------------------
 end_program = threading.Event()
 
 start_program = threading.Event()
@@ -13,7 +14,13 @@ received_damage_data = threading.Event()
 
 received_bullet_data = threading.Event()
 
+player_input_messages: Queue = Queue()
+
 load_neural_network = False
 
-POLLING_INTERVAL = 0.01 # in seconds [s]
-MAX_DURATION = 10 # seconds
+enviroment_type = "normal"
+
+is_learning = True
+
+POLLING_INTERVAL = 0.01  # in seconds [s]
+MAX_DURATION = 5  # seconds

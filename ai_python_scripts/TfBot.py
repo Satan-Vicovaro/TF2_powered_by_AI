@@ -28,29 +28,29 @@ class TfBot:
             m_y: float = 0.0,
             m_z: float = 0.0
         ):
-            self.pos_x = np.float64(pos_x)
-            self.pos_y = np.float64(pos_y)
-            self.pos_z = np.float64(pos_z)
+            self.pos_x = float(pos_x)
+            self.pos_y = float(pos_y)
+            self.pos_z = float(pos_z)
 
-            self.pitch = np.float64(pitch)
-            self.yaw = np.float64(yaw)
+            self.pitch = float(pitch)
+            self.yaw = float(yaw)
 
-            self.vel_x = np.float64(vel_x)
-            self.vel_y = np.float64(vel_y)
-            self.vel_z = np.float64(vel_z)
+            self.vel_x = float(vel_x)
+            self.vel_y = float(vel_y)
+            self.vel_z = float(vel_z)
 
             self.bot_type = bot_type
-            self.damage_dealt = np.float32(damage_dealt)
+            self.damage_dealt = float(damage_dealt)
 
-            self.m_miss_x = np.float32(m_miss_x)
-            self.m_miss_y = np.float32(m_miss_y)
-            self.m_miss_z = np.float32(m_miss_z)
+            self.m_miss_x = float(m_miss_x)
+            self.m_miss_y = float(m_miss_y)
+            self.m_miss_z = float(m_miss_z)
 
-            self.m_distance = np.float32(m_distance)
+            self.m_distance = float(m_distance)
 
-            self.m_x = np.float32(m_x)
-            self.m_y = np.float32(m_y)
-            self.m_z = np.float32(m_z)
+            self.m_x = float(m_x)
+            self.m_y = float(m_y)
+            self.m_z = float(m_z)
 
 
     def normalize(self):        
