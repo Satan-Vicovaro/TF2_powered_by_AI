@@ -155,7 +155,7 @@ class Scene2_NeuralNetwork(Scene):
         
         self.wait(2)
 
-class Scene4_AnglesIn3d(ThreeDScene):
+class Scene3_AnglesIn3d(ThreeDScene):
     def construct(self):
         # 1. Inicjalizacja osi 3D (Zasada: X, Y = płaszczyzna pozioma, Z = wysokość)
         axes = ThreeDAxes(
