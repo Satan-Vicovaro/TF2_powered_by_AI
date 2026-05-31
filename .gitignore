@@ -12,5 +12,5 @@ animations/venv/*
 animations/**/__pycache__/*
 animations/models/*
 animations/**/media/*
-
+media/*
 statistics_and_data/training_data_DDPG.csv

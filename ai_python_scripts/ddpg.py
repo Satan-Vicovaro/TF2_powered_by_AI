@@ -205,7 +205,7 @@ class DDPGConfig:
     verbose: bool = False  # Verbose printing
     total_steps: int = 50_000  # Total training steps
     target_reward: int | None = 2  # Target reward used for early stopping
-    learning_starts: int = 100  # Begin learning after this many step
+    learning_starts: int = 10  # Begin learning after this many step
     gamma: float = 0.99  # Discount factor
     lr: float = 0.001  # Learning rate
     hidden_dim: int = 64 * 4  # Actor and critic network hidden dim
