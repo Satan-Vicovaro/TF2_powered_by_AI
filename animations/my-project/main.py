@@ -153,9 +153,9 @@ class Scene2_NeuralNetwork(Scene):
 
         # Output labels
         pitch_label = (
-            Text("Pitch°", font_size=10).next_to(nodes[-1][0], RIGHT, buff=0.3).set_color(GREEN)
+            Text("Pitch°", font_size=8).next_to(nodes[-1][0], RIGHT, buff=0.3).set_color(GREEN)
         )
-        yaw_label = Text("Yaw°", font_size=10).next_to(nodes[-1][1], RIGHT, buff=0.3).set_color(RED)
+        yaw_label = Text("Yaw°", font_size=8).next_to(nodes[-1][1], RIGHT, buff=0.3).set_color(RED)
 
         self.play(Write(pitch_label), Write(yaw_label), run_time=0.5)
         self.play(nodes[-1].animate.set_color(BLUE).set_fill(opacity=0.3))
@@ -467,7 +467,7 @@ class Scene4_NeuralNetwork(Scene):
         self.play(Write(main_title))
 
         def build_network(layer_sizes, input_texts, output_texts, title_text):
-            layer_spacing = 1.8
+            layer_spacing = 2.0
             node_spacing = 0.04
             node_radius = 0.045
 
@@ -535,7 +535,52 @@ class Scene4_NeuralNetwork(Scene):
         )
 
         networks_group = VGroup(critic_group, actor_group).arrange(DOWN, buff=0.4)
-        networks_group.next_to(main_title, DOWN, buff=0.1)
+        networks_group.to_edge(RIGHT, buff=0.8).shift(DOWN * 0.2)
+
+        # Dane tekstowe na lewej stronie
+        import random
+
+        random.seed(0)
+        xs, ys, zs = (
+            round(random.uniform(-1, 1), 2),
+            round(random.uniform(-1, 1), 2),
+            round(random.uniform(-1, 1), 2),
+        )
+        xt, yt, zt = (
+            round(random.uniform(-1, 1), 2),
+            round(random.uniform(-1, 1), 2),
+            round(random.uniform(-1, 1), 2),
+        )
+        pitch_val, yaw_val = round(random.uniform(-0.5, 0.5), 2), round(
+            random.uniform(-0.5, 0.5), 2
+        )
+        reward_val = round(random.uniform(-10, 10), 1)
+
+        header1 = Text("For:", font_size=20, color=YELLOW)
+        state_s = VGroup(
+            Tex(f"$x_s$ = {xs}", font_size=20),
+            Tex(f"$y_s$ = {ys}", font_size=20),
+            Tex(f"$z_s$ = {zs}", font_size=20),
+        ).arrange(DOWN, aligned_edge=LEFT)
+
+        state_t = VGroup(
+            Tex(f"$x_t$ = {xt}", font_size=20),
+            Tex(f"$y_t$ = {yt}", font_size=20),
+            Tex(f"$z_t$ = {zt}", font_size=20),
+        ).arrange(DOWN, aligned_edge=LEFT)
+        state_group = VGroup(state_s, state_t).arrange(RIGHT, buff=0.5)
+
+        header2 = Text("Actor decision:", font_size=20, color=YELLOW)
+        action_text = VGroup(
+            Tex(f"pitch = {pitch_val}", font_size=20),
+            Tex(f"yaw = {yaw_val}", font_size=20),
+        ).arrange(DOWN, aligned_edge=LEFT)
+
+        header3 = Text(f"Rewarded: {reward_val}", font_size=20, color=GREEN)
+
+        text_panel = VGroup(header1, state_group, header2, action_text, header3)
+        text_panel.arrange(DOWN, aligned_edge=LEFT, buff=0.4)
+        text_panel.to_edge(LEFT, buff=0.5).shift(DOWN * 0.2)
 
         # Animacje sekwencyjne
         self.play(
@@ -560,17 +605,133 @@ class Scene4_NeuralNetwork(Scene):
 
         self.play(Create(c_edges), Create(a_edges), run_time=2)
 
-        # Przepływ sygnału (Forward Pass)
+        # Pokazanie sekcji wejściowej na panelu
+        self.play(Write(header1), Write(state_group), run_time=1.5)
         self.wait(0.5)
+
+        # Animacja wartości wejściowych przelatujących do wezłów wejściowych Actora
+        state_copies = VGroup(*[m.copy() for m in state_s.submobjects + state_t.submobjects])
         self.play(
-            c_edges.animate.set_color(YELLOW).set_opacity(0.4),
-            a_edges.animate.set_color(YELLOW).set_opacity(0.4),
-            run_time=1,
+            *[
+                copy.animate.move_to(a_layers[0][i].get_center()).set_opacity(0).scale(0.5)
+                for i, copy in enumerate(state_copies)
+            ],
+            run_time=1.5
         )
+
+        # Propagacja w przód dla sieci Actor
+        self.play(a_edges.animate.set_color(YELLOW).set_opacity(0.6), run_time=0.8)
+        self.play(a_edges.animate.set_color(WHITE).set_opacity(0.15), run_time=0.5)
+
+        # Pojawienie się decyzji wyjściowych z sieci Actor
+        pitch_out = MathTex(str(pitch_val), font_size=20, color=YELLOW).next_to(a_layers[-1][0], RIGHT, buff=0.8)
+        yaw_out = MathTex(str(yaw_val), font_size=20, color=YELLOW).next_to(a_layers[-1][1], RIGHT, buff=0.8)
+        self.play(FadeIn(pitch_out), FadeIn(yaw_out), run_time=0.5)
+        self.wait(0.5)
+
+        # Nagłówek dla decyzji Actora
+        self.play(Write(header2), run_time=0.5)
+
+        # Transformacja wyników w tekst na lewym panelu
         self.play(
-            c_edges.animate.set_color(WHITE).set_opacity(0.15),
-            a_edges.animate.set_color(WHITE).set_opacity(0.15),
-            run_time=1,
+            ReplacementTransform(pitch_out, action_text[0]),
+            ReplacementTransform(yaw_out, action_text[1]),
+            run_time=1.5
+        )
+        self.wait(0.5)
+
+        # Wypisanie nagrody od środowiska
+        self.play(Write(header3), run_time=1.0)
+
+        # --- ANIMACJA DLA CRITIC'A ---
+        # Animacja wartości wejściowych dla Critic'a (stany + akcje)
+        critic_inputs_copies = VGroup(
+            *[m.copy() for m in state_s.submobjects],
+            *[m.copy() for m in state_t.submobjects],
+            action_text[0].copy(),
+            action_text[1].copy()
+        )
+        
+        self.play(
+            *[
+                copy.animate.move_to(c_layers[0][i].get_center()).set_opacity(0).scale(0.5)
+                for i, copy in enumerate(critic_inputs_copies)
+            ],
+            run_time=1.5
+        )
+
+        # Propagacja w przód dla sieci Critic
+        self.play(c_edges.animate.set_color(YELLOW).set_opacity(0.6), run_time=0.8)
+        self.play(c_edges.animate.set_color(WHITE).set_opacity(0.15), run_time=0.5)
+
+        # Pojawienie się decyzji wyjściowych z sieci Critic (Q-Value)
+        q_val = round(reward_val + random.uniform(-0.5, 0.5), 2)
+        q_out = MathTex(str(q_val), font_size=20, color=YELLOW).next_to(c_layers[-1][0], RIGHT, buff=1.0)
+        self.play(FadeIn(q_out), run_time=0.5)
+        self.wait(0.5)
+
+        # Dodanie tekstu Critic na panelu
+        header4 = Text("Critic evaluation:", font_size=20, color=YELLOW)
+        q_text = Tex(f"Q = {q_val}", font_size=20)
+        q_group = VGroup(header4, q_text).arrange(DOWN, aligned_edge=LEFT)
+        q_group.next_to(text_panel, DOWN, buff=0.4, aligned_edge=LEFT)
+
+        self.play(Write(header4), run_time=0.5)
+        self.play(ReplacementTransform(q_out, q_text), run_time=1.5)
+
+        self.wait(1)
+
+        # --- ANIMACJA POŁĄCZENIA ACTOR I CRITIC ---
+        # Przenosimy wszystkie wartości nad sieci neuronowe, ułożone poziomo
+        values_bar = VGroup(
+            state_s[0], state_s[1], state_s[2],
+            state_t[0], state_t[1], state_t[2],
+            action_text[0], action_text[1],
+            header3,
+            q_text
+        )
+        values_bar.generate_target()
+        values_bar.target.arrange(RIGHT, buff=0.4).scale(0.8).next_to(main_title, DOWN, buff=0.2)
+
+        self.play(
+            FadeOut(header1),
+            FadeOut(header2),
+            FadeOut(header4),
+            MoveToTarget(values_bar),
+            run_time=1.5
+        )
+
+        # Przesuwamy sieć Critic na prawą stronę
+        self.play(
+            critic_group.animate.move_to(RIGHT * 3.2 + DOWN * 0.2),
+            run_time=1.5
+        )
+
+        # Najpierw ukrywamy etykiety, aby zapobiec nakładaniu się tekstów w trakcie ruchu
+        self.play(
+            FadeOut(c_in_lbl[6]),
+            FadeOut(c_in_lbl[7]),
+            FadeOut(a_out_lbl[0]),
+            FadeOut(a_out_lbl[1]),
+            run_time=0.5
+        )
+
+        # Dopasowujemy pozycję sieci Actor tak, aby jej wyjścia idealnie nałożyły się na wejścia Pitch/Yaw Critica
+        target_p = c_layers[0][6].get_center()
+        shift_vec = target_p - a_layers[-1][0].get_center()
+        
+        self.play(
+            actor_group.animate.shift(shift_vec),
+            run_time=1.5
+        )
+
+        # Przepływ sygnału pokazujący, że węzły stały się jednym elementem przekazującym dane
+        self.play(
+            a_layers[-1][0].animate.set_color(RED).set_opacity(0.8),
+            a_layers[-1][1].animate.set_color(RED).set_opacity(0.8),
+            c_layers[0][6].animate.set_color(RED).set_opacity(0.8),
+            c_layers[0][7].animate.set_color(RED).set_opacity(0.8),
+            run_time=1.0
         )
 
         self.wait(3)
