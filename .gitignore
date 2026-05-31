@@ -8,5 +8,9 @@ Rewards_sum.txt
 venv/*
 models/* 
 .idea/*
+animations/venv/*
+animations/**/__pycache__/*
+animations/models/*
+animations/**/media/*
 
 statistics_and_data/training_data_DDPG.csv
