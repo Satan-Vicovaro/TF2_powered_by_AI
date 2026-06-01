@@ -459,7 +459,7 @@ class Scene3_AnglesIn3d(ThreeDScene):
         self.wait(3.5)
 
 
-class Scene4_NeuralNetwork(Scene):
+class Scene4_NeuralNetwork(MovingCameraScene):
     def construct(self):
         # Tytuł
         main_title = Text("DDPG Architecture", font_size=32)
@@ -506,6 +506,7 @@ class Scene4_NeuralNetwork(Scene):
 
             edges = VGroup()
             for i in range(len(vgroups_layers) - 1):
+                layer_edges = VGroup()
                 for node1 in vgroups_layers[i]:
                     for node2 in vgroups_layers[i + 1]:
                         edge = Line(
@@ -514,7 +515,8 @@ class Scene4_NeuralNetwork(Scene):
                             stroke_width=0.4,
                             stroke_opacity=0.15,
                         )
-                        edges.add(edge)
+                        layer_edges.add(edge)
+                edges.add(layer_edges)
 
             title = Text(title_text, font_size=20, color=YELLOW)
             title.next_to(nn_group, UP, buff=0.2)
@@ -616,16 +618,41 @@ class Scene4_NeuralNetwork(Scene):
                 copy.animate.move_to(a_layers[0][i].get_center()).set_opacity(0).scale(0.5)
                 for i, copy in enumerate(state_copies)
             ],
-            run_time=1.5
+            run_time=1.5,
         )
 
+        def fire_all_nodes(layer):
+            anims = []
+            activations = [random.uniform(0.0, 1.0) for _ in range(len(layer))]
+            for i, node in enumerate(layer):
+                val = activations[i]
+                target_color = interpolate_color(node.get_color(), WHITE, val * 0.7)
+                anims.append(node.animate.set_color(target_color).set_fill(opacity=val))
+            return anims
+
+        def fire_all_edges(layer_edges):
+            anims = []
+            for edge in layer_edges:
+                val = random.uniform(0.0, 1.0)
+                anims.append(edge.animate.set_opacity(val))
+            return anims
+
         # Propagacja w przód dla sieci Actor
-        self.play(a_edges.animate.set_color(YELLOW).set_opacity(0.6), run_time=0.8)
-        self.play(a_edges.animate.set_color(WHITE).set_opacity(0.15), run_time=0.5)
+        self.play(*fire_all_nodes(a_layers[0]), run_time=0.4)
+        self.play(*fire_all_edges(a_edges[0]), run_time=0.4)
+        self.play(*fire_all_nodes(a_layers[1]), run_time=0.4)
+        self.play(*fire_all_edges(a_edges[1]), run_time=0.4)
+        self.play(*fire_all_nodes(a_layers[2]), run_time=0.4)
+        self.play(*fire_all_edges(a_edges[2]), run_time=0.4)
+        self.play(*fire_all_nodes(a_layers[3]), run_time=0.4)
 
         # Pojawienie się decyzji wyjściowych z sieci Actor
-        pitch_out = MathTex(str(pitch_val), font_size=20, color=YELLOW).next_to(a_layers[-1][0], RIGHT, buff=0.8)
-        yaw_out = MathTex(str(yaw_val), font_size=20, color=YELLOW).next_to(a_layers[-1][1], RIGHT, buff=0.8)
+        pitch_out = MathTex(str(pitch_val), font_size=20, color=YELLOW).next_to(
+            a_layers[-1][0], RIGHT, buff=0.8
+        )
+        yaw_out = MathTex(str(yaw_val), font_size=20, color=YELLOW).next_to(
+            a_layers[-1][1], RIGHT, buff=0.8
+        )
         self.play(FadeIn(pitch_out), FadeIn(yaw_out), run_time=0.5)
         self.wait(0.5)
 
@@ -636,7 +663,7 @@ class Scene4_NeuralNetwork(Scene):
         self.play(
             ReplacementTransform(pitch_out, action_text[0]),
             ReplacementTransform(yaw_out, action_text[1]),
-            run_time=1.5
+            run_time=1.5,
         )
         self.wait(0.5)
 
@@ -649,24 +676,31 @@ class Scene4_NeuralNetwork(Scene):
             *[m.copy() for m in state_s.submobjects],
             *[m.copy() for m in state_t.submobjects],
             action_text[0].copy(),
-            action_text[1].copy()
+            action_text[1].copy(),
         )
-        
+
         self.play(
             *[
                 copy.animate.move_to(c_layers[0][i].get_center()).set_opacity(0).scale(0.5)
                 for i, copy in enumerate(critic_inputs_copies)
             ],
-            run_time=1.5
+            run_time=1.5,
         )
 
         # Propagacja w przód dla sieci Critic
-        self.play(c_edges.animate.set_color(YELLOW).set_opacity(0.6), run_time=0.8)
-        self.play(c_edges.animate.set_color(WHITE).set_opacity(0.15), run_time=0.5)
+        self.play(*fire_all_nodes(c_layers[0]), run_time=0.4)
+        self.play(*fire_all_edges(c_edges[0]), run_time=0.4)
+        self.play(*fire_all_nodes(c_layers[1]), run_time=0.4)
+        self.play(*fire_all_edges(c_edges[1]), run_time=0.4)
+        self.play(*fire_all_nodes(c_layers[2]), run_time=0.4)
+        self.play(*fire_all_edges(c_edges[2]), run_time=0.4)
+        self.play(*fire_all_nodes(c_layers[3]), run_time=0.4)
 
         # Pojawienie się decyzji wyjściowych z sieci Critic (Q-Value)
         q_val = round(reward_val + random.uniform(-0.5, 0.5), 2)
-        q_out = MathTex(str(q_val), font_size=20, color=YELLOW).next_to(c_layers[-1][0], RIGHT, buff=1.0)
+        q_out = MathTex(str(q_val), font_size=20, color=YELLOW).next_to(
+            c_layers[-1][0], RIGHT, buff=1.0
+        )
         self.play(FadeIn(q_out), run_time=0.5)
         self.wait(0.5)
 
@@ -684,11 +718,16 @@ class Scene4_NeuralNetwork(Scene):
         # --- ANIMACJA POŁĄCZENIA ACTOR I CRITIC ---
         # Przenosimy wszystkie wartości nad sieci neuronowe, ułożone poziomo
         values_bar = VGroup(
-            state_s[0], state_s[1], state_s[2],
-            state_t[0], state_t[1], state_t[2],
-            action_text[0], action_text[1],
+            state_s[0],
+            state_s[1],
+            state_s[2],
+            state_t[0],
+            state_t[1],
+            state_t[2],
+            action_text[0],
+            action_text[1],
             header3,
-            q_text
+            q_text,
         )
         values_bar.generate_target()
         values_bar.target.arrange(RIGHT, buff=0.4).scale(0.8).next_to(main_title, DOWN, buff=0.2)
@@ -698,14 +737,11 @@ class Scene4_NeuralNetwork(Scene):
             FadeOut(header2),
             FadeOut(header4),
             MoveToTarget(values_bar),
-            run_time=1.5
+            run_time=1.5,
         )
 
         # Przesuwamy sieć Critic na prawą stronę
-        self.play(
-            critic_group.animate.move_to(RIGHT * 3.2 + DOWN * 0.2),
-            run_time=1.5
-        )
+        self.play(critic_group.animate.move_to(RIGHT * 3.2 + DOWN * 0.2), run_time=1.5)
 
         # Najpierw ukrywamy etykiety, aby zapobiec nakładaniu się tekstów w trakcie ruchu
         self.play(
@@ -713,17 +749,14 @@ class Scene4_NeuralNetwork(Scene):
             FadeOut(c_in_lbl[7]),
             FadeOut(a_out_lbl[0]),
             FadeOut(a_out_lbl[1]),
-            run_time=0.5
+            run_time=0.5,
         )
 
         # Dopasowujemy pozycję sieci Actor tak, aby jej wyjścia idealnie nałożyły się na wejścia Pitch/Yaw Critica
         target_p = c_layers[0][6].get_center()
         shift_vec = target_p - a_layers[-1][0].get_center()
-        
-        self.play(
-            actor_group.animate.shift(shift_vec),
-            run_time=1.5
-        )
+
+        self.play(actor_group.animate.shift(shift_vec), run_time=1.5)
 
         # Przepływ sygnału pokazujący, że węzły stały się jednym elementem przekazującym dane
         self.play(
@@ -731,8 +764,126 @@ class Scene4_NeuralNetwork(Scene):
             a_layers[-1][1].animate.set_color(RED).set_opacity(0.8),
             c_layers[0][6].animate.set_color(RED).set_opacity(0.8),
             c_layers[0][7].animate.set_color(RED).set_opacity(0.8),
-            run_time=1.0
+            run_time=1.0,
         )
+
+        # Zoom at Critic's last hidden layer and Q value
+        self.play(
+            self.camera.frame.animate.scale(0.5).move_to(c_layers[-1][0].get_center() + LEFT * 0.5),
+            run_time=1.5,
+        )
+
+        q_orig_pos = c_out_lbl[0].get_center()
+        q_val_text = Text("0.3", font_size=16, color=WHITE).move_to(q_orig_pos)
+
+        env_val_text = Text("0.5", font_size=16, color=GREEN).next_to(q_val_text, RIGHT, buff=0.8)
+        env_label = Text("Environment evaluation", font_size=12, color=GREEN).next_to(
+            env_val_text, UP, buff=0.2
+        )
+
+        self.play(
+            c_out_lbl[0].animate.next_to(c_layers[-1][0], UP, buff=0.2),
+            FadeIn(q_val_text),
+            FadeIn(env_val_text),
+            Write(env_label),
+            run_time=1.0,
+        )
+
+        self.wait(1)
+
+        # Zoom out to see the whole Critic network
+        critic_group = VGroup(*c_layers)
+        self.play(
+            self.camera.frame.animate.scale(1.8).move_to(critic_group.get_center() + RIGHT * 0.5),
+            run_time=1.5,
+        )
+        self.wait(0.5)
+
+        # Backpropagation animacja dla Critic'a
+        for i in reversed(range(len(c_edges))):
+            anims = []
+            source_layer = c_layers[i]
+            edge_idx = 0
+            for node1 in source_layer:
+                is_high_brightness = node1.get_fill_opacity() > 0.5
+
+                if is_high_brightness:
+                    if i == 2:
+                        node_base_color = random.choices([RED, GREEN], weights=[0.05, 0.95])[0]
+                    else:
+                        node_base_color = random.choice([RED, GREEN])
+
+                    val = random.uniform(0.3, 0.9)
+                    node_fill_color = interpolate_color(node_base_color, WHITE, (1 - val) * 0.5)
+                    anims.append(
+                        node1.animate.set_color(node_fill_color).set_fill(node_fill_color, opacity=val)
+                    )
+                else:
+                    node_base_color = WHITE
+
+                for node2 in c_layers[i + 1]:
+                    edge = c_edges[i][edge_idx]
+                    if is_high_brightness:
+                        if i == 2:
+                            edge_color = random.choices([RED, GREEN], weights=[0.05, 0.95])[0]
+                        else:
+                            edge_color = random.choice([RED, GREEN])
+                        
+                        edge_val = random.uniform(0.4, 0.9)
+                        anims.append(
+                            edge.animate.set_color(edge_color).set_stroke(width=2.0 * edge_val, opacity=edge_val)
+                        )
+                    else:
+                        anims.append(
+                            edge.animate.set_color(WHITE).set_stroke(width=0.6, opacity=0.15)
+                        )
+                    edge_idx += 1
+
+            self.play(*anims, run_time=0.8)
+            self.wait(1.0)
+
+        # Przejście kamery na Actor'a
+        mid_point = (actor_group.get_center() + critic_group.get_center()) / 2
+        self.play(
+            self.camera.frame.animate.move_to(mid_point + LEFT * 1.5),
+            run_time=1.5
+        )
+        self.wait(0.5)
+
+        # Backpropagation animacja dla Actor'a
+        for i in reversed(range(len(a_edges))):
+            anims = []
+            source_layer = a_layers[i]
+            edge_idx = 0
+            for node1 in source_layer:
+                is_high_brightness = node1.get_fill_opacity() > 0.5
+
+                if is_high_brightness:
+                    node_base_color = random.choice([RED, GREEN])
+                    val = random.uniform(0.3, 0.9)
+                    node_fill_color = interpolate_color(node_base_color, WHITE, (1 - val) * 0.5)
+                    anims.append(
+                        node1.animate.set_color(node_fill_color).set_fill(node_fill_color, opacity=val)
+                    )
+                else:
+                    node_base_color = WHITE
+
+                for node2 in a_layers[i + 1]:
+                    edge = a_edges[i][edge_idx]
+                    if is_high_brightness:
+                        edge_color = random.choice([RED, GREEN])
+                        edge_val = random.uniform(0.4, 0.9)
+                        anims.append(
+                            edge.animate.set_color(edge_color).set_stroke(width=2.0 * edge_val, opacity=edge_val)
+                        )
+                    else:
+                        anims.append(
+                            edge.animate.set_color(WHITE).set_stroke(width=0.6, opacity=0.15)
+                        )
+                    edge_idx += 1
+
+            self.play(*anims, run_time=0.8)
+            self.wait(1.0)
 
         self.wait(3)
 
@@ -927,6 +1078,7 @@ class Scene5_NeuralNetwork(Scene):
             Write(max_label),
             run_time=0.5,
         )
+        self.wait(2)
         # Dodanie tablicy wartości obok wyjść (0.0 lub 1.0)
         # Zgodnie z żądaniem: wybrana akcja (1.0) jest inna niż ta z maksymalną wartością (winner_idx)
         import random
@@ -998,5 +1150,243 @@ class Scene5_NeuralNetwork(Scene):
                 )
 
         self.play(*backprop_in_h1, run_time=0.6)
+
+        self.wait(3)
+
+
+class Scene6_ActorNetwork(MovingCameraScene):
+    def construct(self):
+        # Tytuł
+        title = Text("Actor Network Architecture", font_size=36)
+        title.to_edge(UP)
+        self.play(Write(title))
+
+        def build_network(layer_sizes, input_texts, output_texts, title_text):
+            layer_spacing = 2.5
+            node_spacing = 0.08
+            node_radius = 0.08
+
+            input_color = BLUE
+            hidden_color = GRAY
+            output_color = RED
+
+            vgroups_layers = []
+            for i, num_nodes in enumerate(layer_sizes):
+                layer_group = VGroup()
+                for j in range(num_nodes):
+                    color = (
+                        input_color
+                        if i == 0
+                        else (output_color if i == len(layer_sizes) - 1 else hidden_color)
+                    )
+                    node = Circle(radius=node_radius, color=color, fill_opacity=1, stroke_width=1)
+                    layer_group.add(node)
+                layer_group.arrange(DOWN, buff=node_spacing)
+                vgroups_layers.append(layer_group)
+
+            nn_group = VGroup(*vgroups_layers)
+            nn_group.arrange(RIGHT, buff=layer_spacing)
+
+            input_labels = VGroup()
+            for i, text in enumerate(input_texts):
+                label = MathTex(text, font_size=24) if "_" in text else Text(text, font_size=20)
+                label.next_to(vgroups_layers[0][i], LEFT, buff=0.2)
+                input_labels.add(label)
+
+            output_labels = VGroup()
+            for i, text in enumerate(output_texts):
+                label = Text(text, font_size=22)
+                label.next_to(vgroups_layers[-1][i], RIGHT, buff=0.2)
+                output_labels.add(label)
+
+            edges = VGroup()
+            for i in range(len(vgroups_layers) - 1):
+                layer_edges = VGroup()
+                for node1 in vgroups_layers[i]:
+                    for node2 in vgroups_layers[i + 1]:
+                        edge = Line(
+                            node1.get_right(),
+                            node2.get_left(),
+                            stroke_width=0.4,
+                            stroke_opacity=0.15,
+                        )
+                        layer_edges.add(edge)
+                edges.add(layer_edges)
+
+            title_lbl = Text(title_text, font_size=26, color=YELLOW)
+            title_lbl.next_to(nn_group, UP, buff=0.3)
+
+            full_group = VGroup(edges, nn_group, input_labels, output_labels, title_lbl)
+
+            return full_group, vgroups_layers, input_labels, output_labels, edges, title_lbl
+
+        actor_group, a_layers, a_in_lbl, a_out_lbl, a_edges, a_title = build_network(
+            [6, 16, 16, 2],
+            ["x_s", "y_s", "z_s", "x_t", "y_t", "z_t"],
+            ["Pitch", "Yaw"],
+            "Actor",
+        )
+
+        actor_group.to_edge(RIGHT, buff=0.8).shift(DOWN * 0.2)
+
+        import random
+
+        random.seed(0)
+        xs, ys, zs = (
+            round(random.uniform(-1, 1), 2),
+            round(random.uniform(-1, 1), 2),
+            round(random.uniform(-1, 1), 2),
+        )
+        xt, yt, zt = (
+            round(random.uniform(-1, 1), 2),
+            round(random.uniform(-1, 1), 2),
+            round(random.uniform(-1, 1), 2),
+        )
+
+        header1 = Text("For:", font_size=26, color=YELLOW)
+        state_s = VGroup(
+            VGroup(Tex("$x_s$ =", font_size=26), Tex(str(xs), font_size=26, color=WHITE)).arrange(
+                RIGHT, buff=0.15
+            ),
+            VGroup(Tex("$y_s$ =", font_size=26), Tex(str(ys), font_size=26, color=WHITE)).arrange(
+                RIGHT, buff=0.15
+            ),
+            VGroup(Tex("$z_s$ =", font_size=26), Tex(str(zs), font_size=26, color=WHITE)).arrange(
+                RIGHT, buff=0.15
+            ),
+        ).arrange(DOWN, aligned_edge=LEFT)
+
+        state_t = VGroup(
+            VGroup(Tex("$x_t$ =", font_size=26), Tex(str(xt), font_size=26, color=WHITE)).arrange(
+                RIGHT, buff=0.15
+            ),
+            VGroup(Tex("$y_t$ =", font_size=26), Tex(str(yt), font_size=26, color=WHITE)).arrange(
+                RIGHT, buff=0.15
+            ),
+            VGroup(Tex("$z_t$ =", font_size=26), Tex(str(zt), font_size=26, color=WHITE)).arrange(
+                RIGHT, buff=0.15
+            ),
+        ).arrange(DOWN, aligned_edge=LEFT)
+        state_group = VGroup(state_s, state_t).arrange(RIGHT, buff=0.5)
+
+        text_panel = VGroup(header1, state_group)
+        text_panel.arrange(DOWN, aligned_edge=LEFT, buff=0.4)
+        text_panel.to_corner(UL, buff=1.0)
+
+        self.play(
+            FadeIn(a_layers[0]),
+            Write(a_in_lbl),
+            FadeIn(a_title),
+            run_time=1,
+        )
+        self.play(
+            FadeIn(a_layers[1]),
+            FadeIn(a_layers[2]),
+            run_time=1,
+        )
+        self.play(FadeIn(a_layers[3]), Write(a_out_lbl), run_time=1)
+        self.play(Create(a_edges), run_time=2)
+
+        # Show the panel
+        self.play(Write(header1), Write(state_group), run_time=1.5)
+        self.wait(0.5)
+
+        # Move ONLY the values to input layer
+        values_to_move = [
+            state_s[0][1],
+            state_s[1][1],
+            state_s[2][1],
+            state_t[0][1],
+            state_t[1][1],
+            state_t[2][1],
+        ]
+        state_copies = VGroup(*[m.copy() for m in values_to_move])
+        self.play(
+            *[
+                copy.animate.next_to(a_in_lbl[i], LEFT, buff=0.2).scale(0.8)
+                for i, copy in enumerate(state_copies)
+            ],
+            run_time=1.5,
+        )
+
+        # Simulate forward pass
+        def fire_all_nodes(layer):
+            anims = []
+            activations = [random.uniform(0.1, 0.9) for _ in range(len(layer))]
+            for i, node in enumerate(layer):
+                val = activations[i]
+                target_color = interpolate_color(node.get_color(), WHITE, val * 0.7)
+                anims.append(node.animate.set_color(target_color).set_fill(opacity=val))
+            return anims
+
+        def fire_all_edges(layer_edges):
+            anims = []
+            for edge in layer_edges:
+                val = random.uniform(0.1, 0.5)
+                anims.append(edge.animate.set_opacity(val))
+            return anims
+
+        # Step 1: Inputs
+        self.play(*fire_all_nodes(a_layers[0]), run_time=0.6)
+        self.play(*fire_all_edges(a_edges[0]), run_time=0.6)
+
+        # Step 2: Hidden 1
+        self.play(*fire_all_nodes(a_layers[1]), run_time=0.6)
+        self.play(*fire_all_edges(a_edges[1]), run_time=0.6)
+
+        # Step 3: Hidden 2
+        self.play(*fire_all_nodes(a_layers[2]), run_time=0.6)
+        self.play(*fire_all_edges(a_edges[2]), run_time=0.6)
+
+        # Step 4: Outputs
+        self.play(*fire_all_nodes(a_layers[3]), run_time=0.6)
+
+        self.wait(2)
+
+        # Animate the Pitch and Yaw labels
+        pitch_val = 0.7
+        yaw_val = 0.23
+
+        pitch_orig_pos = a_out_lbl[0].get_center()
+        yaw_orig_pos = a_out_lbl[1].get_center()
+
+        pitch_val_text = Text(str(pitch_val), font_size=20, color=RED).move_to(pitch_orig_pos)
+        yaw_val_text = Text(str(yaw_val), font_size=20, color=RED).move_to(yaw_orig_pos)
+
+        self.play(
+            self.camera.frame.animate.scale(0.5).move_to(a_layers[3].get_center() + RIGHT * 0.5),
+            a_out_lbl[0].animate.next_to(a_layers[3][0], UP, buff=0.1),
+            a_out_lbl[1].animate.next_to(a_layers[3][1], DOWN, buff=0.1),
+            FadeIn(pitch_val_text),
+            FadeIn(yaw_val_text),
+            run_time=1.5,
+        )
+
+        # Environment evaluation
+        env_val_text = Text("0.57", font_size=20, color=GREEN).next_to(
+            pitch_val_text, RIGHT, buff=0.8
+        )
+        env_label = Text("Environment evaluation", font_size=14, color=WHITE).next_to(
+            env_val_text, UP, buff=0.6
+        )
+
+        self.play(Write(env_label), FadeIn(env_val_text), run_time=1.0)
+
+        # Position the ??? statically in the middle right
+        q_marks = Text("???", font_size=24, color=WHITE)
+        mid_point = (pitch_val_text.get_center() + yaw_val_text.get_center()) / 2
+        q_marks.move_to(mid_point)
+        q_marks.set_x(env_val_text.get_center()[0] + 0.8)
+
+        self.play(Write(q_marks), run_time=0.8)
+
+        # Bounce the evaluation value back and forth
+        for i in range(4):
+            is_yaw = i % 2 == 0
+            target_node = yaw_val_text if is_yaw else pitch_val_text
+
+            target_text = env_val_text.copy().next_to(target_node, RIGHT, buff=0.8)
+            self.play(Transform(env_val_text, target_text), run_time=0.6)
+            self.wait(0.2)
 
         self.wait(3)
