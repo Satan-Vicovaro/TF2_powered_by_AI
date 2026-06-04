@@ -2,7 +2,7 @@
 
 This project aims to implement a neural network that attempts to hit a target within the Team Fortress 2 (TF2) game environment. It was created as part of the *Artificial Intelligence* course at Gdańsk University of Technology.
 
-
+https://github.com/user-attachments/assets/dc9170a8-0fb0-40b9-8bc5-49d7731b3755
 
 
 ## Features
@@ -58,7 +58,7 @@ exec server_init
 ```
 5. **Start the AI Script**
 ```
-python ai_script.py
+python ddpg.py
 ```
   - Then type: `start` in the terminal to begin the AI routine.
 
